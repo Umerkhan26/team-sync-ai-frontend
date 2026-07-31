@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
+  Bookmark,
   Globe2,
   Hash,
   Lock,
@@ -34,10 +35,31 @@ import {
 } from '@/components/ui/dialog'
 import { channelApi } from '@/services/channelApi'
 import { orgApi } from '@/services/orgApi'
-import { emitTypingStart, emitTypingStop } from '@/services/socket'
+import { emitTypingStart, emitTypingStop, getSocket } from '@/services/socket'
 import { useChannelRealtime, messagesQueryKey } from '@/features/chat/hooks/useChannelRealtime'
 import { MessageComposer } from '@/features/chat/components/MessageComposer'
 import { MessageRow } from '@/features/chat/components/MessageRow'
+import { PinnedMessagesStrip } from '@/features/chat/components/PinnedMessagesStrip'
+import { BookmarksPanel } from '@/features/chat/components/BookmarksPanel'
+import {
+  addBookmark,
+  clearUnread,
+  getLastRead,
+  getUnreadCount,
+  incrementUnread,
+  isBookmarked as isMessageBookmarked,
+  isPinned as isMessagePinned,
+  listBookmarks,
+  listPinned,
+  markChannelRead,
+  pinMessage,
+  removeBookmark,
+  setLastRead,
+  shouldCountAsUnread,
+  unpinMessage,
+  type BookmarkEntry,
+  type PinnedEntry,
+} from '@/features/chat/utils/chatStorage'
 import { PresenceDot } from '@/components/shared/PresenceDot'
 import { usePresence } from '@/hooks/usePresence'
 import { authApi } from '@/services/authApi'
@@ -74,6 +96,11 @@ export function ChatPage() {
   const [inviteMemberIds, setInviteMemberIds] = useState<string[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [messageSearch, setMessageSearch] = useState('')
+  const [bookmarksOpen, setBookmarksOpen] = useState(false)
+  const [pinnedEntries, setPinnedEntries] = useState<PinnedEntry[]>([])
+  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([])
+  const [unreadVersion, setUnreadVersion] = useState(0)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const currentUser = useAppSelector((s) => s.auth.user)
   const dispatch = useAppDispatch()
@@ -109,6 +136,8 @@ export function ChatPage() {
 
   const selectChannel = useCallback(
     (id: string) => {
+      clearUnread(id)
+      setUnreadVersion((v) => v + 1)
       setSearchParams(
         (prev) => {
           if (prev.get('channelId') === id) return prev
@@ -174,7 +203,24 @@ export function ChatPage() {
 
   useEffect(() => {
     setActiveThreadId(null)
+    setMessageSearch('')
   }, [selectedId])
+
+  useEffect(() => {
+    if (!selectedId) {
+      setPinnedEntries([])
+      return
+    }
+    setPinnedEntries(listPinned(selectedId))
+  }, [selectedId])
+
+  useEffect(() => {
+    if (!orgId) {
+      setBookmarks([])
+      return
+    }
+    setBookmarks(listBookmarks(orgId))
+  }, [orgId, bookmarksOpen])
 
   const selected = channels.find((c) => c.id === selectedId) || null
   const mutedIds = currentUser?.notificationPreferences?.mutedChannelIds || []
@@ -381,7 +427,113 @@ export function ChatPage() {
   }
 
   const messages = [...(messagesQuery.data?.data.items ?? [])].reverse()
+  const messageQuery = messageSearch.trim().toLowerCase()
+  const displayedMessages = messageQuery
+    ? messages.filter((m) => (m.body || '').toLowerCase().includes(messageQuery))
+    : messages
   const threadMessages = [...(threadQuery.data?.data.items ?? [])].reverse()
+  const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
+
+  useEffect(() => {
+    if (!selectedId || messagesQuery.isLoading) return
+    markChannelRead(selectedId, messages)
+    setUnreadVersion((v) => v + 1)
+  }, [selectedId, messages, messagesQuery.isLoading])
+
+  useEffect(() => {
+    if (!orgId) return
+    const socket = getSocket()
+    if (!socket) return
+
+    const onNewMessage = (message: Message) => {
+      const channelId = String(message.channelId)
+      if (channelId === selectedId) {
+        if (message.createdAt) setLastRead(channelId, message.createdAt)
+        return
+      }
+      if (shouldCountAsUnread(channelId, message.createdAt)) {
+        incrementUnread(channelId)
+        setUnreadVersion((v) => v + 1)
+      }
+    }
+
+    socket.on('message:new', onNewMessage)
+    return () => {
+      socket.off('message:new', onNewMessage)
+    }
+  }, [orgId, selectedId])
+
+  const unreadByChannel = useMemo(() => {
+    void unreadVersion
+    const map = new Map<string, number>()
+    for (const channel of channels) {
+      if (channel.id === selectedId) continue
+      const count = getUnreadCount(channel.id)
+      if (count > 0) {
+        map.set(channel.id, count)
+      } else if (!getLastRead(channel.id)) {
+        // Never opened this channel — show a simple unread badge
+        map.set(channel.id, 1)
+      }
+    }
+    return map
+  }, [channels, unreadVersion, selectedId])
+
+  const handlePin = (message: Message) => {
+    if (!selectedId) return
+    const author = authorOf(message)
+    setPinnedEntries(pinMessage(selectedId, message, author?.name || author?.email))
+    toast.success('Message pinned')
+  }
+
+  const handleUnpin = (messageId: string) => {
+    if (!selectedId) return
+    setPinnedEntries(unpinMessage(selectedId, messageId))
+    toast.success('Message unpinned')
+  }
+
+  const handleBookmark = (message: Message) => {
+    if (!orgId || !selected) return
+    const author = authorOf(message)
+    setBookmarks(
+      addBookmark(orgId, {
+        messageId: message.id,
+        channelId: selected.id,
+        channelLabel: channelTitle(selected),
+        body: message.body,
+        authorName: author?.name || author?.email,
+        messageCreatedAt: message.createdAt,
+      }),
+    )
+    toast.success('Message saved to bookmarks')
+  }
+
+  const handleRemoveBookmark = (message: Message) => {
+    if (!orgId) return
+    const entry = bookmarks.find(
+      (b) => b.messageId === message.id && b.channelId === message.channelId,
+    )
+    if (!entry) return
+    setBookmarks(removeBookmark(orgId, entry.id))
+    toast.success('Bookmark removed')
+  }
+
+  const handleRemoveBookmarkById = (id: string) => {
+    if (!orgId) return
+    setBookmarks(removeBookmark(orgId, id))
+    toast.success('Bookmark removed')
+  }
+
+  const jumpToMessage = (messageId: string) => {
+    document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const goToBookmark = (channelId: string, messageId: string) => {
+    clearUnread(channelId)
+    setUnreadVersion((v) => v + 1)
+    selectChannel(channelId)
+    window.setTimeout(() => jumpToMessage(messageId), 400)
+  }
   const threadParent = activeThreadId
     ? messages.find((m) => m.id === activeThreadId) || null
     : null
@@ -451,6 +603,7 @@ export function ChatPage() {
                     selectedId={selectedId}
                     onSelect={selectChannel}
                     labelOf={channelTitle}
+                    unreadByChannel={unreadByChannel}
                     onCreate={can('channels:create') ? () => openChannelDialog(false) : undefined}
                   />
                   <ChannelSection
@@ -460,6 +613,7 @@ export function ChatPage() {
                     selectedId={selectedId}
                     onSelect={selectChannel}
                     labelOf={channelTitle}
+                    unreadByChannel={unreadByChannel}
                     onCreate={can('channels:create') ? () => openChannelDialog(true) : undefined}
                   />
                   <ChannelSection
@@ -469,6 +623,7 @@ export function ChatPage() {
                     selectedId={selectedId}
                     onSelect={selectChannel}
                     labelOf={channelTitle}
+                    unreadByChannel={unreadByChannel}
                     avatarOf={(channel) => dmPeer(channel)}
                     presenceOf={(channel) => {
                       const peer = dmPeer(channel)
@@ -542,6 +697,29 @@ export function ChatPage() {
                     ) : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    <div className="relative hidden sm:block">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        value={messageSearch}
+                        onChange={(e) => setMessageSearch(e.target.value)}
+                        placeholder="Search messages"
+                        className="h-8 w-44 rounded-md border border-border bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-ring/30 lg:w-56"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBookmarksOpen(true)}
+                      className="relative"
+                    >
+                      <Bookmark className="h-3.5 w-3.5" />
+                      Bookmarks
+                      {bookmarks.length > 0 ? (
+                        <span className="ml-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                          {bookmarks.length > 99 ? '99+' : bookmarks.length}
+                        </span>
+                      ) : null}
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => void toggleMute()}>
                       {isMuted ? 'Unmute' : 'Mute'}
                     </Button>
@@ -602,16 +780,42 @@ export function ChatPage() {
                       </div>
                     </div>
                   ) : (
-                    messages.map((msg) => (
-                      <MessageRow
-                        key={msg.id}
-                        message={msg}
-                        author={authorOf(msg)}
-                        currentUserId={currentUser?.id}
-                        onToggleReaction={(emoji) => toggleReaction.mutate({ messageId: msg.id, emoji })}
-                        onOpenThread={() => setActiveThreadId(msg.id)}
+                    <>
+                      <PinnedMessagesStrip
+                        entries={pinnedEntries}
+                        messagesById={messagesById}
+                        onUnpin={handleUnpin}
+                        onJumpTo={jumpToMessage}
                       />
-                    ))
+                      {displayedMessages.length === 0 ? (
+                        <p className="px-2 py-8 text-center text-xs text-muted-foreground">
+                          No messages match “{messageSearch.trim()}”.
+                        </p>
+                      ) : (
+                        displayedMessages.map((msg) => (
+                          <MessageRow
+                            key={msg.id}
+                            message={msg}
+                            author={authorOf(msg)}
+                            currentUserId={currentUser?.id}
+                            onToggleReaction={(emoji) =>
+                              toggleReaction.mutate({ messageId: msg.id, emoji })
+                            }
+                            onOpenThread={() => setActiveThreadId(msg.id)}
+                            isPinned={selectedId ? isMessagePinned(selectedId, msg.id) : false}
+                            isBookmarked={
+                              orgId && selectedId
+                                ? isMessageBookmarked(orgId, msg.id, selectedId)
+                                : false
+                            }
+                            onPin={() => handlePin(msg)}
+                            onUnpin={() => handleUnpin(msg.id)}
+                            onBookmark={() => handleBookmark(msg)}
+                            onRemoveBookmark={() => handleRemoveBookmark(msg)}
+                          />
+                        ))
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -838,6 +1042,14 @@ export function ChatPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <BookmarksPanel
+        open={bookmarksOpen}
+        onOpenChange={setBookmarksOpen}
+        bookmarks={bookmarks}
+        onRemove={handleRemoveBookmarkById}
+        onGoTo={goToBookmark}
+      />
     </div>
   )
 }
@@ -851,6 +1063,7 @@ interface ChannelSectionProps {
   labelOf: (channel: Channel) => string
   avatarOf?: (channel: Channel) => User | null
   presenceOf?: (channel: Channel) => 'online' | 'away' | 'offline' | null
+  unreadByChannel?: Map<string, number>
   onCreate?: () => void
 }
 
@@ -863,6 +1076,7 @@ function ChannelSection({
   labelOf,
   avatarOf,
   presenceOf,
+  unreadByChannel,
   onCreate,
 }: ChannelSectionProps) {
   if (channels.length === 0 && !onCreate) return null
@@ -892,6 +1106,7 @@ function ChannelSection({
             const user = avatarOf?.(channel)
             const active = selectedId === channel.id
             const presence = presenceOf?.(channel)
+            const unread = unreadByChannel?.get(channel.id) ?? 0
             return (
               <li key={channel.id}>
                 <button
@@ -918,7 +1133,12 @@ function ChannelSection({
                   ) : (
                     <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="truncate">{labelOf(channel)}</span>
+                  <span className="min-w-0 flex-1 truncate">{labelOf(channel)}</span>
+                  {unread > 0 && !active ? (
+                    <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             )

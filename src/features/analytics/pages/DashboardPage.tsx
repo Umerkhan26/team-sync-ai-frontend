@@ -21,7 +21,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SetupChecklist } from '@/features/organizations/components/SetupChecklist'
-import { analyticsApi } from '@/services/fileApi'
+import { analyticsApi, fileApi } from '@/services/fileApi'
 import { projectApi } from '@/services/projectApi'
 import { taskApi } from '@/services/taskApi'
 import { orgApi } from '@/services/orgApi'
@@ -59,6 +59,37 @@ function greeting() {
   if (hour < 12) return 'morning'
   if (hour < 18) return 'afternoon'
   return 'evening'
+}
+
+function startOfDay(d: Date) {
+  const next = new Date(d)
+  next.setHours(0, 0, 0, 0)
+  return next
+}
+
+/** Last 7 days (inclusive of today) with completed-task counts for the week chart. */
+function buildWeekCompletions(tasks: Task[]) {
+  const today = startOfDay(new Date())
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(today)
+    date.setDate(today.getDate() - (6 - i))
+    return {
+      key: date.toISOString().slice(0, 10),
+      label: date.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 3),
+      count: 0,
+      time: date.getTime(),
+    }
+  })
+  for (const task of tasks) {
+    if (task.status !== 'done') continue
+    const raw = task.completedAt || task.updatedAt
+    if (!raw) continue
+    const completed = startOfDay(new Date(raw)).getTime()
+    const day = days.find((d) => d.time === completed)
+    if (day) day.count += 1
+  }
+  const max = Math.max(1, ...days.map((d) => d.count))
+  return { days, max }
 }
 
 const STATUS_ORDER = [
@@ -130,6 +161,12 @@ export function DashboardPage() {
     enabled: Boolean(orgId) && can('teams:read'),
   })
 
+  const filesQuery = useQuery({
+    queryKey: ['files', orgId, 'home'],
+    queryFn: () => fileApi.list({ limit: 5 }),
+    enabled: Boolean(orgId) && can('files:read'),
+  })
+
   if (!orgId) {
     return (
       <EmptyState
@@ -166,8 +203,20 @@ export function DashboardPage() {
   const members = membersQuery.data ?? []
   const docs = docsQuery.data?.data.items ?? []
   const teams = teamsQuery.data?.data.items ?? []
+  const recentFiles = filesQuery.data?.data.items ?? []
 
   const focusPool = roleSlug === 'member' || roleSlug === 'guest' ? myTasks : tasks
+  const focusForToday = focusPool
+    .filter((t) => isDueToday(t) || isOverdue(t))
+    .sort((a, b) => {
+      const aOver = isOverdue(a) ? 0 : 1
+      const bOver = isOverdue(b) ? 0 : 1
+      if (aOver !== bOver) return aOver - bOver
+      const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER
+      const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER
+      return aDue - bDue
+    })
+    .slice(0, 5)
   const focusTasks = focusPool
     .filter((t) => t.status !== 'done' && t.status !== 'cancelled')
     .sort((a, b) => {
@@ -179,6 +228,10 @@ export function DashboardPage() {
       return aDue - bDue
     })
     .slice(0, 8)
+
+  const weekChart = buildWeekCompletions(
+    roleSlug === 'member' || roleSlug === 'guest' ? myTasks : tasks,
+  )
 
   const statusSource =
     roleSlug === 'member' || roleSlug === 'guest' ? myTasks : tasks
@@ -300,7 +353,7 @@ export function DashboardPage() {
       ? { to: '/app/chat', label: 'Open chat', icon: MessageSquare }
       : null,
     can('documents:create')
-      ? { to: '/app/docs', label: 'New doc', icon: FileText }
+      ? { to: '/app/documents', label: 'New doc', icon: FileText }
       : null,
     can('meetings:create')
       ? { to: '/app/meetings', label: 'Schedule', icon: CalendarClock }
@@ -364,7 +417,7 @@ export function DashboardPage() {
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="surface-panel group relative overflow-hidden p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/30"
+            className="surface-panel group relative overflow-hidden p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
           >
             <div
               aria-hidden
@@ -385,6 +438,135 @@ export function DashboardPage() {
           </div>
         ))}
       </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <section className="surface-panel p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="app-title text-base">Focus for today</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Due today and overdue · max 5
+              </p>
+            </div>
+            <Link to="/app/tasks" className="text-xs font-medium text-primary hover:underline">
+              All tasks
+            </Link>
+          </div>
+          {focusForToday.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing due today or overdue. You&apos;re clear for now.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-md border border-border/60">
+              {focusForToday.map((task) => (
+                <li
+                  key={task.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{task.title}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      <span className="font-mono">#{task.number}</span>
+                      {task.dueDate ? ` · due ${formatDate(task.dueDate)}` : ''}
+                      {isOverdue(task) ? (
+                        <span className="font-medium text-destructive"> · overdue</span>
+                      ) : (
+                        <span className="font-medium text-warning"> · today</span>
+                      )}
+                    </p>
+                  </div>
+                  <Badge
+                    variant={isOverdue(task) ? 'destructive' : 'outline'}
+                    className="shrink-0 capitalize"
+                  >
+                    {task.status.replaceAll('_', ' ')}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="surface-panel p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="app-title text-base">This week</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Completed tasks · last 7 days
+              </p>
+            </div>
+            <Badge variant="secondary" className="tabular-nums">
+              {weekChart.days.reduce((sum, d) => sum + d.count, 0)} done
+            </Badge>
+          </div>
+          <div className="ts-week-chart" aria-hidden={weekChart.days.every((d) => d.count === 0)}>
+            {weekChart.days.map((day) => (
+              <span
+                key={day.key}
+                title={`${day.label}: ${day.count}`}
+                style={{
+                  height: `${Math.max(4, Math.round((day.count / weekChart.max) * 100))}%`,
+                  opacity: day.count === 0 ? 0.25 : 0.85,
+                }}
+              />
+            ))}
+          </div>
+          <div className="mt-2 grid grid-cols-7 gap-[0.35rem] text-center text-[10px] text-muted-foreground">
+            {weekChart.days.map((day) => (
+              <span key={`${day.key}-label`} className="tabular-nums">
+                {day.label}
+              </span>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {can('files:read') ? (
+        <section className="surface-panel p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="app-title text-base">Recent files</h2>
+              <p className="text-[11px] text-muted-foreground">Latest uploads in this workspace</p>
+            </div>
+            <Link to="/app/files" className="text-xs font-medium text-primary hover:underline">
+              All files
+            </Link>
+          </div>
+          {filesQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading files…</p>
+          ) : recentFiles.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No files uploaded yet.</p>
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-md border border-border/60">
+              {recentFiles.map((file) => (
+                <li key={file.id}>
+                  <a
+                    href={file.secureUrl || file.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <FileText className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{file.fileName}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {file.createdAt ? formatDate(file.createdAt) : '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      File
+                    </Badge>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="surface-panel p-4">
@@ -561,7 +743,7 @@ export function DashboardPage() {
             <div className="space-y-2 pt-2">
               <div className="flex items-center justify-between">
                 <h2 className="app-title text-base">Recent docs</h2>
-                <Link to="/app/docs" className="text-xs font-medium text-primary hover:underline">
+                <Link to="/app/documents" className="text-xs font-medium text-primary hover:underline">
                   All docs
                 </Link>
               </div>
@@ -574,7 +756,7 @@ export function DashboardPage() {
                   {docs.map((doc) => (
                     <li key={doc.id}>
                       <Link
-                        to={`/app/docs/${doc.id}`}
+                        to={`/app/documents/${doc.id}`}
                         className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-accent/40"
                       >
                         <div className="flex min-w-0 items-center gap-2.5">

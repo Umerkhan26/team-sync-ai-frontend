@@ -5,6 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import Link from '@tiptap/extension-link'
 import {
   Bold,
+  FileText,
   Heading1,
   Heading2,
   Italic,
@@ -17,6 +18,7 @@ import {
   Undo,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DOC_SNIPPETS } from '@/features/documents/constants/snippets'
 import { cn } from '@/utils/cn'
 
 interface TiptapEditorProps {
@@ -131,6 +133,33 @@ export function TiptapEditor({ content, editable = true, onUpdate, className }: 
             icon={Redo}
             label="Redo"
           />
+          <span className="mx-1 h-5 w-px bg-border" />
+          {DOC_SNIPPETS.map((snippet) => (
+            <Button
+              key={snippet.id}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-[11px]"
+              title={`Insert ${snippet.label}`}
+              onClick={() => {
+                const lines = snippet.content.split('\n')
+                editor
+                  .chain()
+                  .focus()
+                  .insertContent(
+                    lines.map((line) => ({
+                      type: 'paragraph',
+                      content: line ? [{ type: 'text', text: line }] : [],
+                    })),
+                  )
+                  .run()
+              }}
+            >
+              <FileText className="h-3 w-3" />
+              {snippet.label}
+            </Button>
+          ))}
         </div>
       ) : null}
       <div className="px-4 py-3">

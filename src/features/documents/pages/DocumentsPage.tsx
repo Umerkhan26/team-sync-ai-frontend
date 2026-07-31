@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { JSONContent } from '@tiptap/react'
-import { History, Plus, RotateCcw, FileText } from 'lucide-react'
+import { History, Link2, MessageSquare, Plus, RotateCcw, FileText } from 'lucide-react'
+import { DocCommentsPanel } from '@/features/documents/components/DocCommentsPanel'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -25,7 +26,20 @@ import { TiptapEditor } from '@/features/documents/components/TiptapEditor'
 import { documentApi } from '@/services/documentApi'
 import { useAppSelector } from '@/store'
 import { formatDate, formatDateTime, getErrorMessage } from '@/utils/cn'
-import type { User } from '@/types'
+import { orgApi } from '@/services/orgApi'
+import type { Membership, User } from '@/types'
+
+function memberUser(membership: Membership): User | null {
+  return typeof membership.userId === 'object' ? (membership.userId as User) : null
+}
+
+function copyDocumentShareLink(documentId: string) {
+  const url = `${window.location.origin}/app/documents/${documentId}`
+  void navigator.clipboard.writeText(url).then(
+    () => toast.success('Share link copied'),
+    () => toast.error('Could not copy link'),
+  )
+}
 
 const createSchema = z.object({
   title: z.string().min(1).max(200),
@@ -109,10 +123,10 @@ export function DocumentsPage() {
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {documents.map((doc) => (
-            <li key={doc.id}>
+            <li key={doc.id} className="group relative">
               <Link
                 to={`/app/documents/${doc.id}`}
-                className="surface-panel group flex h-full flex-col gap-3 p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40"
+                className="surface-panel flex h-full flex-col gap-3 p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40"
               >
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:scale-105">
                   <FileText className="h-4 w-4" />
@@ -123,9 +137,25 @@ export function DocumentsPage() {
                     {doc.content?.slice(0, 140) || 'Empty document — open to start writing.'}
                   </p>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Updated {formatDate(doc.updatedAt)}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    Updated {formatDate(doc.updatedAt)}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2 text-xs"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      copyDocumentShareLink(doc.id)
+                    }}
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Share link
+                  </Button>
+                </div>
               </Link>
             </li>
           ))}
@@ -169,7 +199,9 @@ export function DocumentEditorPage() {
   const navigate = useNavigate()
   const [title, setTitle] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const currentUser = useAppSelector((s) => s.auth.user)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
   const pendingContent = useRef<{ content: string; contentJson: JSONContent } | null>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -185,6 +217,16 @@ export function DocumentEditorPage() {
     queryFn: () => documentApi.listVersions(documentId),
     enabled: Boolean(documentId) && historyOpen,
   })
+
+  const membersQuery = useQuery({
+    queryKey: ['members', orgId],
+    queryFn: () => orgApi.listMembers(orgId!),
+    enabled: Boolean(orgId),
+  })
+
+  const orgMembers = (membersQuery.data ?? [])
+    .map(memberUser)
+    .filter((u): u is User => Boolean(u))
 
   useEffect(() => {
     if (query.data) setTitle(query.data.title)
@@ -256,6 +298,14 @@ export function DocumentEditorPage() {
             <Button variant="outline" asChild>
               <Link to="/app/documents">Back</Link>
             </Button>
+            <Button variant="outline" onClick={() => copyDocumentShareLink(documentId)}>
+              <Link2 className="h-4 w-4" />
+              Share link
+            </Button>
+            <Button variant="outline" onClick={() => setCommentsOpen((v) => !v)}>
+              <MessageSquare className="h-4 w-4" />
+              Comments
+            </Button>
             <Button variant="outline" onClick={() => setHistoryOpen((v) => !v)}>
               <History className="h-4 w-4" />
               History
@@ -272,7 +322,11 @@ export function DocumentEditorPage() {
         }
       />
 
-      <div className={historyOpen ? 'grid gap-6 lg:grid-cols-[1fr_280px]' : ''}>
+      <div
+        className={
+          historyOpen || commentsOpen ? 'grid gap-6 lg:grid-cols-[1fr_280px]' : ''
+        }
+      >
         <div className="space-y-4">
           <Input
             className="app-title h-auto border-none bg-transparent px-0 text-2xl shadow-none focus-visible:ring-0"
@@ -293,7 +347,13 @@ export function DocumentEditorPage() {
           />
         </div>
 
-        {historyOpen ? (
+        {commentsOpen ? (
+          <DocCommentsPanel
+            documentId={documentId}
+            currentUserName={currentUser?.name || currentUser?.email || 'You'}
+            members={orgMembers}
+          />
+        ) : historyOpen ? (
           <aside className="surface-panel h-fit p-4">
             <h3 className="mb-3 text-sm font-semibold">Version history</h3>
             {versionsQuery.isLoading ? (

@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, CreditCard, Sparkles, Zap } from 'lucide-react'
+import { Check, CreditCard, Minus, Plus, Sparkles, Zap } from 'lucide-react'
+import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,10 +45,50 @@ const PLANS = [
   },
 ] as const
 
+const STUB_INVOICES = [
+  { id: 'inv_001', date: '2026-07-01', amount: '$144.00', status: 'Paid' as const },
+  { id: 'inv_002', date: '2026-06-01', amount: '$132.00', status: 'Paid' as const },
+  { id: 'inv_003', date: '2026-05-01', amount: '$120.00', status: 'Paid' as const },
+]
+
+function seatsKey(orgId: string) {
+  return `teamsync_billing_seats_${orgId}`
+}
+
+function loadSeats(orgId: string): number {
+  try {
+    const raw = localStorage.getItem(seatsKey(orgId))
+    if (raw === null) return 3
+    const n = Number(raw)
+    return Number.isFinite(n) && n >= 1 ? n : 3
+  } catch {
+    return 3
+  }
+}
+
+const SEAT_CAP = 10
+
 export function BillingPage() {
   const org = useAppSelector((s) => s.org.activeOrganization)
   const { can, isOwner } = usePermissions()
   const currentPlan = (org?.plan || 'free').toLowerCase()
+  const [seats, setSeats] = useState(() => (org?.id ? loadSeats(org.id) : 3))
+
+  useEffect(() => {
+    if (org?.id) setSeats(loadSeats(org.id))
+  }, [org?.id])
+
+  const updateSeats = (next: number) => {
+    const clamped = Math.max(1, Math.min(999, next))
+    setSeats(clamped)
+    if (org?.id) localStorage.setItem(seatsKey(org.id), String(clamped))
+  }
+
+  const checkout = (planName: string) => {
+    toast.info('Redirecting to Stripe checkout…', {
+      description: `Upgrade to ${planName} — payment flow is stubbed for MVP.`,
+    })
+  }
 
   if (!can('org:billing') && !isOwner) {
     return (
@@ -62,24 +104,99 @@ export function BillingPage() {
     )
   }
 
+  const monthlyTotal = currentPlan === 'pro' ? seats * 12 : 0
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Plan & seats"
         title="Billing"
-        description={`${org?.name || 'Workspace'} · current plan: ${currentPlan}. Stripe checkout is stubbed for now.`}
+        description={`${org?.name || 'Workspace'} · current plan: ${currentPlan}. Manage seats and invoices below.`}
+        actions={
+          <Button size="sm" onClick={() => checkout('Pro')}>
+            <CreditCard className="h-3.5 w-3.5" />
+            Stripe checkout
+          </Button>
+        }
       />
 
-      <div className="surface-panel flex flex-wrap items-center justify-between gap-3 p-4">
-        <div>
-          <p className="text-sm font-medium">Current plan</p>
-          <p className="text-xs text-muted-foreground">
-            Seats and invoices will appear here after Stripe is connected.
-          </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="surface-panel flex flex-wrap items-center justify-between gap-3 p-4">
+          <div>
+            <p className="text-sm font-medium">Current plan</p>
+            <p className="text-xs text-muted-foreground">
+              {currentPlan === 'pro'
+                ? `$12 × ${seats} seats = $${monthlyTotal}/mo`
+                : 'Upgrade to Pro for per-seat billing.'}
+            </p>
+          </div>
+          <Badge variant="secondary" className="capitalize">
+            {currentPlan}
+          </Badge>
         </div>
-        <Badge variant="secondary" className="capitalize">
-          {currentPlan}
-        </Badge>
+
+        <div className="surface-panel p-4">
+          <p className="text-sm font-medium">Seats used</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Licensed seats for this workspace (stub).
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={seats <= 1}
+              onClick={() => updateSeats(seats - 1)}
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </Button>
+            <span className="min-w-[4.5rem] text-center text-lg font-semibold tabular-nums">
+              {seats} / {SEAT_CAP}
+            </span>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={seats >= SEAT_CAP}
+              onClick={() => updateSeats(seats + 1)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${Math.min(100, (seats / SEAT_CAP) * 100)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="app-title text-sm">Invoices</h2>
+        <ul className="surface-panel divide-y divide-border overflow-hidden">
+          {STUB_INVOICES.map((inv) => (
+            <li
+              key={inv.id}
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+            >
+              <div>
+                <p className="font-medium">{inv.id}</p>
+                <p className="text-xs text-muted-foreground">{inv.date}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="font-medium tabular-nums">{inv.amount}</span>
+                <Badge variant="success">{inv.status}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => toast.info('Invoice PDF download (stub)')}
+                >
+                  PDF
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -88,11 +205,11 @@ export function BillingPage() {
             key={plan.id}
             className={cn(
               'surface-panel relative flex flex-col p-5',
-              plan.highlight && 'border-primary/40 shadow-md',
+              'highlight' in plan && plan.highlight && 'border-primary/40 shadow-md',
               currentPlan === plan.id && 'ring-1 ring-primary/50',
             )}
           >
-            {plan.highlight ? (
+            {'highlight' in plan && plan.highlight ? (
               <span className="absolute right-3 top-3 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                 Popular
               </span>
@@ -121,11 +238,7 @@ export function BillingPage() {
               className="mt-5"
               variant={currentPlan === plan.id ? 'secondary' : 'default'}
               disabled={currentPlan === plan.id}
-              onClick={() => {
-                window.alert(
-                  'Billing is a stub for now. Stripe checkout will plug in here later.',
-                )
-              }}
+              onClick={() => checkout(plan.name)}
             >
               {currentPlan === plan.id ? 'Current plan' : `Upgrade to ${plan.name}`}
             </Button>

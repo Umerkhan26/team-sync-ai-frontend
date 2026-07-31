@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { useAppDispatch, useAppSelector } from '@/store'
+import { useAppSelector } from '@/store'
 import { getSocket } from '@/services/socket'
 import type { PresenceStatus } from '@/store/presenceSlice'
 

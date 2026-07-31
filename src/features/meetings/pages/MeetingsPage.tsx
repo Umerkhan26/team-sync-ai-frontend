@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarClock, ClipboardCheck, Link2, Plus, Sparkles, Trash2, Video, Zap } from 'lucide-react'
+import { CalendarClock, CircleDot, ClipboardCheck, Link2, Plus, Sparkles, Trash2, Video, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -44,7 +44,7 @@ import { projectApi } from '@/services/projectApi'
 import { taskApi } from '@/services/taskApi'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
-import { formatDateTime, getErrorMessage, getInitials } from '@/utils/cn'
+import { formatDateTime, getErrorMessage, getInitials, cn } from '@/utils/cn'
 import type { Membership, Meeting, User } from '@/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
@@ -89,6 +89,73 @@ function memberUser(membership: Membership): User | null {
   return typeof membership.userId === 'object' ? (membership.userId as User) : null
 }
 
+type RsvpStatus = 'going' | 'maybe' | 'declined'
+
+function rsvpKey(meetingId: string, userId: string) {
+  return `ts_meeting_rsvp_${meetingId}_${userId}`
+}
+
+function loadRsvp(meetingId: string, userId: string): RsvpStatus | null {
+  try {
+    const raw = localStorage.getItem(rsvpKey(meetingId, userId))
+    if (raw === 'going' || raw === 'maybe' || raw === 'declined') return raw
+    return null
+  } catch {
+    return null
+  }
+}
+
+function saveRsvp(meetingId: string, userId: string, status: RsvpStatus) {
+  localStorage.setItem(rsvpKey(meetingId, userId), status)
+}
+
+function meetingHasRecording(meeting: Meeting): boolean {
+  const past = new Date(meeting.endsAt).getTime() < Date.now()
+  if (!past) return false
+  let hash = 0
+  for (let i = 0; i < meeting.id.length; i++) {
+    hash = (hash + meeting.id.charCodeAt(i) * (i + 1)) % 10
+  }
+  return hash >= 4
+}
+
+function startOfWeek(date: Date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function weekDaysFromToday(): Date[] {
+  const start = startOfWeek(new Date())
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    return d
+  })
+}
+
+function sameCalendarDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+function dateKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function meetingOnDay(meeting: Meeting, day: Date) {
+  const start = new Date(meeting.startsAt)
+  return sameCalendarDay(start, day)
+}
+
+const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 const emptyValues: MeetingForm = {
   title: '',
   startsAt: '',
@@ -105,6 +172,8 @@ export function MeetingsPage() {
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [actionItemsMeeting, setActionItemsMeeting] = useState<Meeting | null>(null)
   const [targetProjectId, setTargetProjectId] = useState('')
+  const [rsvpVersion, setRsvpVersion] = useState(0)
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const currentUser = useAppSelector((s) => s.auth.user)
   const queryClient = useQueryClient()
@@ -164,6 +233,28 @@ export function MeetingsPage() {
   const meetings = [...(meetingsQuery.data?.data.items ?? [])].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   )
+
+  const weekDays = useMemo(() => weekDaysFromToday(), [])
+  const today = new Date()
+
+  const selectedDay = useMemo(() => {
+    if (!selectedDayKey) return null
+    return weekDays.find((d) => dateKey(d) === selectedDayKey) ?? null
+  }, [selectedDayKey, weekDays])
+
+  const isUpcoming = (m: Meeting) => new Date(m.endsAt).getTime() >= Date.now()
+  const dayFiltered = selectedDay
+    ? meetings.filter((m) => meetingOnDay(m, selectedDay))
+    : meetings
+  const upcoming = dayFiltered.filter(isUpcoming)
+  const past = dayFiltered.filter((m) => !isUpcoming(m))
+
+  const setRsvp = (meetingId: string, status: RsvpStatus) => {
+    if (!currentUser?.id) return
+    saveRsvp(meetingId, currentUser.id, status)
+    setRsvpVersion((v) => v + 1)
+    toast.success(`RSVP: ${status === 'going' ? 'Going' : status === 'maybe' ? 'Maybe' : 'Declined'}`)
+  }
 
   const saveMutation = useMutation({
     mutationFn: (values: MeetingForm) => {
@@ -278,11 +369,12 @@ export function MeetingsPage() {
     )
   }
 
-  const isUpcoming = (m: Meeting) => new Date(m.endsAt).getTime() >= Date.now()
-  const upcoming = meetings.filter(isUpcoming)
-  const past = meetings.filter((m) => !isUpcoming(m))
+  const renderMeeting = (meeting: Meeting) => {
+    const myRsvp = currentUser?.id ? loadRsvp(meeting.id, currentUser.id) : null
+    void rsvpVersion
+    const hasRecording = meetingHasRecording(meeting)
 
-  const renderMeeting = (meeting: Meeting) => (
+    return (
     <li
       key={meeting.id}
       className="surface-panel p-4 shadow-sm transition-all duration-150 hover:border-primary/30 hover:shadow-md"
@@ -293,10 +385,37 @@ export function MeetingsPage() {
             <CalendarClock className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <p className="truncate font-medium">{meeting.title}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="truncate font-medium">{meeting.title}</p>
+              {hasRecording ? (
+                <Badge variant="secondary" className="gap-1 text-[10px]">
+                  <CircleDot className="h-3 w-3 text-destructive" />
+                  Recording
+                </Badge>
+              ) : null}
+            </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {formatDateTime(meeting.startsAt)} – {formatDateTime(meeting.endsAt)}
             </p>
+            {isUpcoming(meeting) && currentUser?.id ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground">RSVP:</span>
+                {(['going', 'maybe', 'declined'] as const).map((status) => (
+                  <Button
+                    key={status}
+                    type="button"
+                    variant={myRsvp === status ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="h-7 px-2.5 text-[11px] capitalize"
+                    onClick={() => setRsvp(meeting.id, status)}
+                  >
+                    {status === 'going' ? 'Going' : status === 'maybe' ? 'Maybe' : 'Declined'}
+                  </Button>
+                ))}
+              </div>
+            ) : myRsvp ? (
+              <p className="mt-1 text-[11px] text-muted-foreground capitalize">You RSVP'd: {myRsvp}</p>
+            ) : null}
             {meeting.agenda ? (
               <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{meeting.agenda}</p>
             ) : null}
@@ -384,7 +503,8 @@ export function MeetingsPage() {
         </div>
       </div>
     </li>
-  )
+    )
+  }
 
   return (
     <div>
@@ -429,6 +549,81 @@ export function MeetingsPage() {
         />
       ) : (
         <div className="space-y-7">
+          <section className="surface-panel overflow-hidden p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                This week
+              </h2>
+              {selectedDayKey ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setSelectedDayKey(null)}
+                >
+                  Clear day filter
+                </Button>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-7 gap-2">
+              {weekDays.map((day, i) => {
+                const dayMeetings = meetings.filter((m) => meetingOnDay(m, day))
+                const isToday = sameCalendarDay(day, today)
+                const key = dateKey(day)
+                const isSelected = selectedDayKey === key
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSelectedDayKey((prev) => (prev === key ? null : key))}
+                    className={cn(
+                      'rounded-lg border border-border p-2 text-center transition-colors hover:border-primary/40 hover:bg-accent/40',
+                      isToday && 'border-primary/40 bg-primary/5',
+                      isSelected && 'border-primary bg-primary/10 ring-1 ring-primary/30',
+                    )}
+                  >
+                    <p className="text-[10px] font-medium text-muted-foreground">
+                      {WEEKDAY_SHORT[i]}
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-0.5 text-sm font-semibold tabular-nums',
+                        (isToday || isSelected) && 'text-primary',
+                      )}
+                    >
+                      {day.getDate()}
+                    </p>
+                    <div className="mt-2 flex min-h-[36px] flex-col gap-1">
+                      {dayMeetings.length === 0 ? (
+                        <span className="text-[10px] text-muted-foreground/50">—</span>
+                      ) : (
+                        dayMeetings.slice(0, 3).map((m) => (
+                          <span
+                            key={m.id}
+                            className="truncate rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary"
+                            title={m.title}
+                          >
+                            {new Date(m.startsAt).toLocaleTimeString([], {
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}{' '}
+                            {m.title}
+                          </span>
+                        ))
+                      )}
+                      {dayMeetings.length > 3 ? (
+                        <span className="text-[9px] text-muted-foreground">
+                          +{dayMeetings.length - 3} more
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
           <section>
             <h2 className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Upcoming

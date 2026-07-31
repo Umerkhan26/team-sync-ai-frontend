@@ -26,10 +26,12 @@ import {
 } from '@/components/ui/dialog'
 import { projectApi } from '@/services/projectApi'
 import { orgApi } from '@/services/orgApi'
+import { taskApi } from '@/services/taskApi'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
-import { cn, formatDate, getErrorMessage, getInitials } from '@/utils/cn'
-import type { Membership, Project, ProjectStatus, User } from '@/types'
+import { cn, formatDate, getErrorMessage, getInitials, isOverdue } from '@/utils/cn'
+import { healthVariantFromScore, projectHealthScore } from '@/features/projects/utils/projectHealth'
+import type { Membership, Project, ProjectStatus, Task, User } from '@/types'
 
 const schema = z.object({
   name: z.string().min(1).max(120),
@@ -46,6 +48,29 @@ function statusPillVariant(status: ProjectStatus) {
   if (status === 'active') return 'success' as const
   if (status === 'completed') return 'secondary' as const
   return 'outline' as const
+}
+
+type HealthBadge = {
+  label: string
+  variant: 'success' | 'warning' | 'destructive' | 'secondary' | 'outline'
+}
+
+function healthFromTasks(tasks: Task[]): HealthBadge | null {
+  const score = projectHealthScore(tasks)
+  if (score == null) return null
+  const variant = healthVariantFromScore(score)
+  const overdue = tasks.filter(
+    (t) => t.status !== 'done' && t.status !== 'cancelled' && isOverdue(t.dueDate),
+  ).length
+  const suffix = score >= 70 ? 'On track' : score >= 40 ? 'At risk' : 'Behind'
+  const overdueNote = overdue > 0 ? ` · ${overdue} overdue` : ''
+  return { label: `${score} · ${suffix}${overdueNote}`, variant }
+}
+
+function healthFromStatus(status: ProjectStatus): HealthBadge {
+  if (status === 'active') return { label: 'On track', variant: 'success' }
+  if (status === 'completed') return { label: 'Done', variant: 'secondary' }
+  return { label: 'Archived', variant: 'outline' }
 }
 
 type FormValues = z.infer<typeof schema>
@@ -70,6 +95,24 @@ export function ProjectsPage() {
     queryFn: () => orgApi.listMembers(orgId!),
     enabled: Boolean(orgId) && open,
   })
+
+  const tasksQuery = useQuery({
+    queryKey: ['tasks', orgId, 'project-health'],
+    queryFn: () => taskApi.list({ limit: 100 }),
+    enabled: Boolean(orgId),
+  })
+
+  const tasksByProject = useMemo(() => {
+    const map = new Map<string, Task[]>()
+    for (const task of tasksQuery.data?.data.items ?? []) {
+      if (!map.has(task.projectId)) map.set(task.projectId, [])
+      map.get(task.projectId)!.push(task)
+    }
+    return map
+  }, [tasksQuery.data])
+
+  const projectHealth = (project: Project): HealthBadge =>
+    healthFromTasks(tasksByProject.get(project.id) ?? []) ?? healthFromStatus(project.status)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -163,17 +206,29 @@ export function ProjectsPage() {
               {project.key}
             </p>
           </div>
-          <Badge variant={statusPillVariant(project.status)} className="shrink-0 gap-1 capitalize">
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                project.status === 'active' && 'bg-success',
-                project.status === 'completed' && 'bg-muted-foreground',
-                project.status === 'archived' && 'bg-muted-foreground',
-              )}
-            />
-            {project.status}
-          </Badge>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {(() => {
+              const health = projectHealth(project)
+              return (
+                <Badge variant={health.variant} className="gap-1">
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 rounded-full',
+                      health.variant === 'success' && 'bg-success',
+                      health.variant === 'warning' && 'bg-warning',
+                      health.variant === 'destructive' && 'bg-destructive',
+                      (health.variant === 'outline' || health.variant === 'secondary') &&
+                        'bg-muted-foreground',
+                    )}
+                  />
+                  {health.label}
+                </Badge>
+              )
+            })()}
+            <Badge variant={statusPillVariant(project.status)} className="gap-1 capitalize">
+              {project.status}
+            </Badge>
+          </div>
         </div>
         {project.description ? (
           <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{project.description}</p>
@@ -218,6 +273,14 @@ export function ProjectsPage() {
       <Link to={`/app/projects/${project.id}`} className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium">{project.name}</p>
+          {(() => {
+            const health = projectHealth(project)
+            return (
+              <Badge variant={health.variant} className="shrink-0">
+                {health.label}
+              </Badge>
+            )
+          })()}
           <Badge variant={statusPillVariant(project.status)} className="shrink-0 capitalize">
             {project.status}
           </Badge>

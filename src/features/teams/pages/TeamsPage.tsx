@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Plus, Users, X } from 'lucide-react'
+import { Plus, Target, Users, X } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -36,12 +36,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { teamApi } from '@/services/teamApi'
 import { orgApi } from '@/services/orgApi'
+import { taskApi } from '@/services/taskApi'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
-import { formatDate, getErrorMessage, getInitials } from '@/utils/cn'
-import type { Membership, User } from '@/types'
+import { cn, formatDate, getErrorMessage, getInitials } from '@/utils/cn'
+import type { Membership, Task, Team, User } from '@/types'
 
 const teamSchema = z.object({
   name: z.string().min(1).max(120),
@@ -54,11 +56,80 @@ function memberUser(membership: Membership): User | null {
   return typeof membership.userId === 'object' ? (membership.userId as User) : null
 }
 
+function teamGoalKey(teamId: string) {
+  return `ts_team_goal_${teamId}`
+}
+
+function loadTeamGoal(teamId: string): string {
+  try {
+    return localStorage.getItem(teamGoalKey(teamId)) || ''
+  } catch {
+    return ''
+  }
+}
+
+function saveTeamGoal(teamId: string, goal: string) {
+  localStorage.setItem(teamGoalKey(teamId), goal)
+}
+
+function clearTeamGoal(teamId: string) {
+  localStorage.removeItem(teamGoalKey(teamId))
+}
+
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function startOfWeek(date: Date) {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function weekDays(): Date[] {
+  const start = startOfWeek(new Date())
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
+    return d
+  })
+}
+
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+function taskDueDay(task: Task): Date | null {
+  if (!task.dueDate) return null
+  const d = new Date(task.dueDate)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function heatLevel(count: number): string {
+  if (count === 0) return 'bg-muted/50'
+  if (count === 1) return 'bg-primary/20'
+  if (count === 2) return 'bg-primary/40'
+  if (count === 3) return 'bg-primary/60'
+  return 'bg-primary/80'
+}
+
+function teamCapacityUsed(team: Team): number {
+  return team.memberIds.length
+}
+
+const TEAM_CAPACITY_MAX = 10
+
 export function TeamsPage() {
   const [open, setOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [addMemberId, setAddMemberId] = useState('')
+  const [goalDraft, setGoalDraft] = useState('')
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const queryClient = useQueryClient()
   const { can } = usePermissions()
@@ -75,6 +146,12 @@ export function TeamsPage() {
     enabled: Boolean(orgId),
   })
 
+  const tasksQuery = useQuery({
+    queryKey: ['tasks', orgId, 'teams-heatmap'],
+    queryFn: () => taskApi.list({ limit: 200 }),
+    enabled: Boolean(orgId) && can('tasks:read'),
+  })
+
   const form = useForm<TeamForm>({
     resolver: zodResolver(teamSchema),
     defaultValues: { name: '', description: '' },
@@ -82,7 +159,17 @@ export function TeamsPage() {
 
   const teams = teamsQuery.data?.data.items ?? []
   const members = membersQuery.data ?? []
+  const allTasks = tasksQuery.data?.data.items ?? []
+  const days = useMemo(() => weekDays(), [])
   const selectedTeam = teams.find((t) => t.id === selectedId) || null
+
+  useEffect(() => {
+    if (!selectedTeam) {
+      setGoalDraft('')
+      return
+    }
+    setGoalDraft(loadTeamGoal(selectedTeam.id))
+  }, [selectedTeam?.id])
 
   const usersById = useMemo(() => {
     const map = new Map<string, User>()
@@ -138,6 +225,47 @@ export function TeamsPage() {
     updateMembersMutation.mutate({ teamId: selectedTeam.id, memberIds: next })
   }
 
+  const teamTasks = useMemo(() => {
+    if (!selectedTeam) return allTasks
+    return allTasks.filter((t) => t.assigneeIds.some((id) => selectedTeam.memberIds.includes(id)))
+  }, [allTasks, selectedTeam])
+
+  const heatmapRows = useMemo(() => {
+    if (!selectedTeam) return []
+    const rows = selectedTeam.memberIds.map((userId) => {
+      const user = usersById.get(userId)
+      const counts = days.map((day) => {
+        return teamTasks.filter((task) => {
+          const due = taskDueDay(task)
+          return due ? sameDay(due, day) && task.assigneeIds.includes(userId) : false
+        }).length
+      })
+      return { userId, user, counts }
+    })
+    if (rows.length > 0) return rows
+    return days[0]
+      ? [
+          {
+            userId: 'placeholder',
+            user: null,
+            counts: days.map(() => 0),
+          },
+        ]
+      : []
+  }, [selectedTeam, usersById, days, teamTasks])
+
+  const saveGoal = () => {
+    if (!selectedTeam) return
+    const trimmed = goalDraft.trim()
+    if (trimmed) {
+      saveTeamGoal(selectedTeam.id, trimmed)
+      toast.success('Team goal saved')
+    } else {
+      clearTeamGoal(selectedTeam.id)
+      toast.success('Team goal cleared')
+    }
+  }
+
   if (!can('teams:read')) {
     return (
       <EmptyState
@@ -182,7 +310,12 @@ export function TeamsPage() {
         />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {teams.map((team) => (
+          {teams.map((team) => {
+            const used = teamCapacityUsed(team)
+            const pct = Math.min(100, Math.round((used / TEAM_CAPACITY_MAX) * 100))
+            const capacityTone =
+              pct >= 85 ? 'bg-destructive' : pct >= 60 ? 'bg-amber-500' : 'bg-primary'
+            return (
             <button
               key={team.id}
               type="button"
@@ -207,11 +340,32 @@ export function TeamsPage() {
               ) : (
                 <p className="mt-3 text-sm italic text-muted-foreground/60">No description yet</p>
               )}
+              <div className="mt-4 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span>Capacity</span>
+                  <span className="tabular-nums font-medium">
+                    {used} / {TEAM_CAPACITY_MAX}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn('h-full rounded-full transition-all', capacityTone)}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+              {loadTeamGoal(team.id) ? (
+                <p className="mt-3 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Target className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                  <span className="line-clamp-1">{loadTeamGoal(team.id)}</span>
+                </p>
+              ) : null}
               <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
                 Updated {formatDate(team.updatedAt)}
               </p>
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -260,6 +414,135 @@ export function TeamsPage() {
                 </SheetDescription>
               </SheetHeader>
               <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                <section>
+                  <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Team goal
+                  </h3>
+                  <div className="space-y-2">
+                    <Textarea
+                      value={goalDraft}
+                      onChange={(e) => setGoalDraft(e.target.value)}
+                      placeholder="One goal for this team this quarter…"
+                      rows={2}
+                      className="text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveGoal}>
+                        Save goal
+                      </Button>
+                      {goalDraft.trim() ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setGoalDraft('')
+                            if (selectedTeam) clearTeamGoal(selectedTeam.id)
+                            toast.success('Team goal cleared')
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Workload heatmap
+                  </h3>
+                  {!can('tasks:read') ? (
+                    <p className="text-xs text-muted-foreground">
+                      Task access required to show workload data.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-md border border-border p-3">
+                      <div className="mb-2 grid grid-cols-[minmax(80px,1fr)_repeat(7,minmax(28px,1fr))] gap-1 text-[10px] font-medium text-muted-foreground">
+                        <span>Member</span>
+                        {days.map((day, i) => (
+                          <span key={i} className="text-center">
+                            {WEEKDAY_LABELS[i]}
+                            <br />
+                            <span className="font-normal">{day.getDate()}</span>
+                          </span>
+                        ))}
+                      </div>
+                      {heatmapRows.map((row) => (
+                        <div
+                          key={row.userId}
+                          className="mb-1 grid grid-cols-[minmax(80px,1fr)_repeat(7,minmax(28px,1fr))] items-center gap-1"
+                        >
+                          <span className="truncate text-xs">
+                            {row.user?.name || row.user?.email || 'Unassigned'}
+                          </span>
+                          {row.counts.map((count, i) => (
+                            <span
+                              key={i}
+                              title={`${count} task${count === 1 ? '' : 's'} due`}
+                              className={cn(
+                                'mx-auto flex h-7 w-7 items-center justify-center rounded text-[10px] font-medium tabular-nums',
+                                heatLevel(count),
+                                count > 0 && 'text-primary-foreground',
+                              )}
+                            >
+                              {count > 0 ? count : ''}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
+                      {selectedTeam.memberIds.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Add members to see workload by assignee.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+                </section>
+
+                <section>
+                  <h3 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Capacity
+                    <Badge variant="secondary" className="tabular-nums normal-case">
+                      {selectedTeam
+                        ? `${teamCapacityUsed(selectedTeam)} / ${TEAM_CAPACITY_MAX}`
+                        : `0 / ${TEAM_CAPACITY_MAX}`}
+                    </Badge>
+                  </h3>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all',
+                        (() => {
+                          const pct = selectedTeam
+                            ? Math.min(
+                                100,
+                                Math.round((teamCapacityUsed(selectedTeam) / TEAM_CAPACITY_MAX) * 100),
+                              )
+                            : 0
+                          return pct >= 85
+                            ? 'bg-destructive'
+                            : pct >= 60
+                              ? 'bg-amber-500'
+                              : 'bg-primary'
+                        })(),
+                      )}
+                      style={{
+                        width: `${
+                          selectedTeam
+                            ? Math.min(
+                                100,
+                                Math.round((teamCapacityUsed(selectedTeam) / TEAM_CAPACITY_MAX) * 100),
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    Fake seat capacity — {TEAM_CAPACITY_MAX} members max per team.
+                  </p>
+                </section>
+
                 <section>
                   <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Members

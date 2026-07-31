@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -25,7 +26,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  CheckCircle2,
+  ChevronRight,
+  Download,
   Globe2,
+  KeyRound,
   Lock,
   Mail,
   Pencil,
@@ -76,6 +81,45 @@ type OrgForm = z.infer<typeof orgSchema>
 
 const COMPANY_SIZES: CompanySize[] = ['1-10', '11-50', '51-200', '201-1000', '1000+']
 
+const SSO_PROVIDERS = ['Okta', 'Google Workspace', 'Microsoft Entra ID', 'OneLogin'] as const
+
+function ipAllowlistKey(orgId: string) {
+  return `teamsync_ip_allowlist_${orgId}`
+}
+
+function loadIpAllowlist(orgId: string): string {
+  try {
+    return localStorage.getItem(ipAllowlistKey(orgId)) || ''
+  } catch {
+    return ''
+  }
+}
+
+function exportMembersCsv(
+  members: Membership[],
+  labelFn: (m: Membership) => string,
+  emailFn: (m: Membership) => string,
+  roleFn: (m: Membership) => string,
+) {
+  const header = ['Name', 'Email', 'Role', 'Status']
+  const rows = members.map((m) => [
+    labelFn(m),
+    emailFn(m),
+    roleFn(m),
+    m.status,
+  ])
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `members-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function inviteBadge(invite: { status: string; expiresAt?: string }) {
   const status = invite.status?.toLowerCase()
   if (status === 'revoked') return { label: 'Revoked', variant: 'destructive' as const }
@@ -105,10 +149,20 @@ export function AdminPage() {
   const [transferUserId, setTransferUserId] = useState('')
   const [transferOpen, setTransferOpen] = useState(false)
   const [detailMembership, setDetailMembership] = useState<Membership | null>(null)
+  const [ssoStep, setSsoStep] = useState(0)
+  const [ssoProvider, setSsoProvider] = useState<string>(SSO_PROVIDERS[0])
+  const [ssoDomain, setSsoDomain] = useState('')
+  const [ipAllowlist, setIpAllowlist] = useState(() =>
+    org?.id ? loadIpAllowlist(org.id) : '',
+  )
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  useEffect(() => {
+    if (org?.id) setIpAllowlist(loadIpAllowlist(org.id))
+  }, [org?.id])
 
   const membersQuery = useQuery({
     queryKey: ['members', org?.id],
@@ -393,6 +447,11 @@ export function AdminPage() {
     return <EmptyState title="Select a workspace" />
   }
 
+  const saveIpAllowlist = () => {
+    localStorage.setItem(ipAllowlistKey(org.id), ipAllowlist)
+    toast.success('IP allowlist saved locally')
+  }
+
   const hasFilters = search.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all'
   const totalMembers = membersQuery.data?.length ?? 0
 
@@ -552,7 +611,23 @@ export function AdminPage() {
                     Clear
                   </Button>
                 ) : null}
-                <span className="ml-auto text-xs text-muted-foreground">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() =>
+                    exportMembersCsv(
+                      filteredMembers,
+                      memberLabel,
+                      memberEmail,
+                      roleSlugOf,
+                    )
+                  }
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </Button>
+                <span className="text-xs text-muted-foreground">
                   {filteredMembers.length} of {totalMembers}
                 </span>
               </div>
@@ -888,6 +963,124 @@ export function AdminPage() {
                 ))}
               </div>
               <Input disabled placeholder="teamsync.acme.com" />
+            </div>
+
+            <div className="surface-panel max-w-2xl space-y-4 p-5">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4 text-primary" />
+                <div>
+                  <h3 className="app-title text-sm">SSO setup</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Configure SAML/OIDC for your identity provider — stub wizard for MVP.
+                  </p>
+                </div>
+              </div>
+
+              <ol className="flex gap-2">
+                {(['Provider', 'Domain', 'Test'] as const).map((label, i) => (
+                  <li
+                    key={label}
+                    className={`flex flex-1 items-center gap-1.5 rounded-md border px-2.5 py-2 text-xs ${
+                      ssoStep === i
+                        ? 'border-primary bg-primary/5 font-medium'
+                        : ssoStep > i
+                          ? 'border-success/40 text-success'
+                          : 'border-border text-muted-foreground'
+                    }`}
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
+                      {ssoStep > i ? '✓' : i + 1}
+                    </span>
+                    {label}
+                  </li>
+                ))}
+              </ol>
+
+              {ssoStep === 0 ? (
+                <div className="space-y-3">
+                  <Label>Identity provider</Label>
+                  <Select value={ssoProvider} onValueChange={setSsoProvider}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SSO_PROVIDERS.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" onClick={() => setSsoStep(1)}>
+                    Continue
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : null}
+
+              {ssoStep === 1 ? (
+                <div className="space-y-3">
+                  <Label htmlFor="ssoDomain">Email domain</Label>
+                  <Input
+                    id="ssoDomain"
+                    placeholder="acme.com"
+                    value={ssoDomain}
+                    onChange={(e) => setSsoDomain(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Users with @{ssoDomain || 'your-domain.com'} will sign in via {ssoProvider}.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setSsoStep(0)}>
+                      Back
+                    </Button>
+                    <Button size="sm" disabled={!ssoDomain.trim()} onClick={() => setSsoStep(2)}>
+                      Continue
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {ssoStep === 2 ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-dashed border-border p-4 text-center">
+                    <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
+                    <p className="mt-2 text-sm font-medium">Test connection</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Simulated handshake with {ssoProvider} for {ssoDomain}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => toast.success('SSO test passed (stub) — production SAML coming soon')}
+                  >
+                    Run test login
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSsoStep(1)}>
+                    Back
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="surface-panel max-w-2xl space-y-4 p-5">
+              <div>
+                <h3 className="app-title text-sm">IP allowlist</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Restrict admin access to specific IPs or CIDR ranges. Saved locally for MVP.
+                </p>
+              </div>
+              <Textarea
+                rows={4}
+                placeholder={'203.0.113.0/24\n198.51.100.42\n10.0.0.0/8'}
+                value={ipAllowlist}
+                onChange={(e) => setIpAllowlist(e.target.value)}
+                className="font-mono text-xs"
+              />
+              <Button size="sm" onClick={saveIpAllowlist}>
+                Save allowlist
+              </Button>
             </div>
 
             {isOwner ? (

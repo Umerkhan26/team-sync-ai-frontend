@@ -1,18 +1,30 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { Bookmark, BookmarkPlus, ExternalLink, Sparkles, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import { aiApi } from '@/services/fileApi'
 import { useAppSelector } from '@/store'
 import { getErrorMessage } from '@/utils/cn'
+import { useStreamingText } from '@/hooks/useStreamingText'
+import {
+  STUB_CITATIONS,
+  deductAiCredit,
+  deleteSavedPrompt,
+  getAiCredits,
+  listSavedPrompts,
+  savePrompt,
+  type SavedPrompt,
+} from '@/utils/aiStorage'
 
 const promptSchema = z.object({
   prompt: z.string().min(1, 'Prompt is required').max(20000),
@@ -32,9 +44,52 @@ function resultText(result: unknown): string {
   return String(result)
 }
 
+function CreditMeter({ credits, max = 100 }: { credits: number; max?: number }) {
+  const pct = Math.round((credits / max) * 100)
+  const low = credits <= 10
+  return (
+    <div className="surface-panel space-y-2 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs font-medium">
+          <Sparkles className="h-3.5 w-3.5 text-primary" />
+          AI credits {credits} / {max}
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`h-full rounded-full transition-all ${low ? 'bg-warning' : 'bg-primary'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {low ? (
+        <p className="text-[11px] text-warning">Running low — upgrade for more quota.</p>
+      ) : null}
+    </div>
+  )
+}
+
 export function AiAssistantPage() {
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const [output, setOutput] = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const [credits, setCredits] = useState(() => (orgId ? getAiCredits(orgId) : 42))
+  const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>(() =>
+    orgId ? listSavedPrompts(orgId) : [],
+  )
+  const [activeFeature, setActiveFeature] = useState('task-description')
+  const displayedOutput = useStreamingText(output, streaming)
+
+  useEffect(() => {
+    if (!orgId) return
+    setCredits(getAiCredits(orgId))
+    setSavedPrompts(listSavedPrompts(orgId))
+  }, [orgId])
+
+  useEffect(() => {
+    if (streaming && displayedOutput === output && output) {
+      setStreaming(false)
+    }
+  }, [streaming, displayedOutput, output])
 
   const taskForm = useForm<PromptForm>({
     resolver: zodResolver(promptSchema),
@@ -49,31 +104,61 @@ export function AiAssistantPage() {
     defaultValues: { prompt: '' },
   })
 
+  const onAiSuccess = (data: { result: unknown }, prompt: string, feature: string) => {
+    const text = resultText(data.result)
+    setOutput(text)
+    setStreaming(true)
+    if (orgId) {
+      setCredits(deductAiCredit(orgId))
+      setSavedPrompts(savePrompt(orgId, prompt, feature))
+    }
+    toast.success('AI response ready')
+  }
+
   const generate = useMutation({
     mutationFn: (input: {
       prompt: string
       systemInstruction: string
       feature: string
     }) => aiApi.generate(input),
-    onSuccess: (data) => {
-      setOutput(resultText(data.result))
-      toast.success('AI response ready')
-    },
+    onSuccess: (data, variables) => onAiSuccess(data, variables.prompt, variables.feature),
     onError: (error) => toast.error(getErrorMessage(error, 'AI request failed')),
   })
 
   const suggest = useMutation({
     mutationFn: () => aiApi.suggestActions(),
     onSuccess: (data) => {
-      setOutput(resultText(data.result))
+      const text = resultText(data.result)
+      setOutput(text)
+      setStreaming(true)
+      if (orgId) setCredits(deductAiCredit(orgId))
       toast.success('Suggestions ready')
     },
     onError: (error) => toast.error(getErrorMessage(error, 'AI request failed')),
   })
 
+  const loadPrompt = (prompt: SavedPrompt) => {
+    setActiveFeature(prompt.feature)
+    if (prompt.feature.includes('summarize')) {
+      summaryForm.setValue('prompt', prompt.text)
+    } else if (prompt.feature.includes('sprint')) {
+      sprintForm.setValue('prompt', prompt.text)
+    } else {
+      taskForm.setValue('prompt', prompt.text)
+    }
+  }
+
+  const removePrompt = (id: string) => {
+    if (!orgId) return
+    setSavedPrompts(deleteSavedPrompt(orgId, id))
+    toast.success('Prompt removed')
+  }
+
   if (!orgId) {
     return <EmptyState title="Select an organization" />
   }
+
+  const isPending = generate.isPending || suggest.isPending
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
@@ -87,15 +172,65 @@ export function AiAssistantPage() {
               variant="outline"
               size="sm"
               onClick={() => suggest.mutate()}
-              disabled={suggest.isPending}
+              disabled={isPending || credits === 0}
             >
               {suggest.isPending ? 'Thinking…' : 'Suggest next actions'}
             </Button>
           }
         />
 
+        <CreditMeter credits={credits} />
+
+        {savedPrompts.length > 0 ? (
+          <div className="surface-panel space-y-2 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Bookmark className="h-3.5 w-3.5" />
+              Saved prompts
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {savedPrompts.slice(0, 12).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="group inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-left text-xs transition hover:border-primary/40 hover:bg-accent"
+                  onClick={() => loadPrompt(p)}
+                  title={p.text}
+                >
+                  <span className="truncate">{p.text.slice(0, 40)}{p.text.length > 40 ? '…' : ''}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground opacity-60 hover:bg-destructive/10 hover:text-destructive hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removePrompt(p.id)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        removePrompt(p.id)
+                      }
+                    }}
+                    aria-label="Remove prompt"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="surface-panel p-4">
-          <Tabs defaultValue="task">
+          <Tabs
+            defaultValue="task"
+            onValueChange={(v) => {
+              if (v === 'summary') setActiveFeature('summarize')
+              else if (v === 'sprint') setActiveFeature('sprint-plan')
+              else setActiveFeature('task-description')
+            }}
+          >
             <TabsList className="mb-4">
               <TabsTrigger value="task">Task description</TabsTrigger>
               <TabsTrigger value="summary">Summarize</TabsTrigger>
@@ -123,9 +258,27 @@ export function AiAssistantPage() {
                     {...taskForm.register('prompt')}
                   />
                 </div>
-                <Button type="submit" disabled={generate.isPending}>
-                  {generate.isPending ? 'Generating…' : 'Generate description'}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" disabled={isPending || credits === 0}>
+                    {generate.isPending ? 'Generating…' : 'Generate description'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!taskForm.watch('prompt')?.trim()}
+                    onClick={() => {
+                      const text = taskForm.getValues('prompt')
+                      if (text.trim()) {
+                        setSavedPrompts(savePrompt(orgId, text, activeFeature))
+                        toast.success('Prompt saved')
+                      }
+                    }}
+                  >
+                    <BookmarkPlus className="h-3.5 w-3.5" />
+                    Save prompt
+                  </Button>
+                </div>
               </form>
             </TabsContent>
 
@@ -145,7 +298,7 @@ export function AiAssistantPage() {
                   <Label htmlFor="summary-prompt">Content to summarize</Label>
                   <Textarea id="summary-prompt" rows={8} {...summaryForm.register('prompt')} />
                 </div>
-                <Button type="submit" disabled={generate.isPending}>
+                <Button type="submit" disabled={isPending || credits === 0}>
                   {generate.isPending ? 'Summarizing…' : 'Summarize'}
                 </Button>
               </form>
@@ -172,7 +325,7 @@ export function AiAssistantPage() {
                     {...sprintForm.register('prompt')}
                   />
                 </div>
-                <Button type="submit" disabled={generate.isPending}>
+                <Button type="submit" disabled={isPending || credits === 0}>
                   {generate.isPending ? 'Planning…' : 'Generate sprint plan'}
                 </Button>
               </form>
@@ -195,18 +348,62 @@ export function AiAssistantPage() {
             </Button>
           ) : null}
         </div>
-        {output ? (
-          <div className="surface-panel relative min-h-[320px] overflow-hidden p-5">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/10"
-            />
-            <div className="ts-prose-output relative text-foreground/90">{output}</div>
+        {output || isPending ? (
+          <div className="space-y-3">
+            <div className="surface-panel relative min-h-[320px] overflow-hidden p-5">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/10"
+              />
+              <div className="ts-prose-output relative text-foreground/90">
+                {isPending && !displayedOutput ? (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <span className="animate-pulse">Generating</span>
+                    <span className="animate-bounce">…</span>
+                  </span>
+                ) : (
+                  <>
+                    {displayedOutput}
+                    {streaming && displayedOutput.length < output.length ? (
+                      <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary align-middle" />
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {output && !streaming ? (
+              <div className="surface-panel space-y-2 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Sources
+                </p>
+                <ul className="space-y-1.5">
+                  {STUB_CITATIONS.map((cite) => (
+                    <li key={cite.title}>
+                      <a
+                        href={cite.href}
+                        className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-accent"
+                        onClick={(e) => e.preventDefault()}
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate font-medium">{cite.title}</span>
+                        <Badge variant="secondary" className="shrink-0 text-[10px]">
+                          {cite.source}
+                        </Badge>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-muted-foreground">
+                  Citations are stubbed — will link to workspace docs and chat when RAG is enabled.
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState
             title="No output yet"
-            description="Run one of the AI forms — results appear here as polished text."
+            description="Run one of the AI forms — results appear here with a streaming feel."
             className="min-h-[320px] py-10"
           />
         )}

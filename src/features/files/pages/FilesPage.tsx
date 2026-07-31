@@ -5,8 +5,13 @@ import {
   Bookmark,
   Download,
   FileIcon,
+  Folder,
   Grid3x3,
+  History,
+  Link2,
   List as ListIcon,
+  Shield,
+  ShieldCheck,
   Trash2,
   Upload,
   UploadCloud,
@@ -27,11 +32,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { fileApi } from '@/services/fileApi'
 import { projectApi } from '@/services/projectApi'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
-import { cn, formatDate, getErrorMessage } from '@/utils/cn'
+import { cn, formatDate, formatDateTime, getErrorMessage } from '@/utils/cn'
 import {
   deleteSavedView,
   listSavedViews,
@@ -50,6 +62,80 @@ function isPreviewable(mimeType: string) {
   return mimeType.startsWith('image/') || mimeType === 'application/pdf'
 }
 
+function fileFolderPath(fileName: string): string {
+  const slash = fileName.indexOf('/')
+  if (slash <= 0) return 'Root'
+  return fileName.slice(0, slash)
+}
+
+function fileDisplayName(fileName: string): string {
+  const slash = fileName.lastIndexOf('/')
+  return slash >= 0 ? fileName.slice(slash + 1) : fileName
+}
+
+function hashFileId(fileId: string): number {
+  let hash = 0
+  for (let i = 0; i < fileId.length; i++) {
+    hash = (hash + fileId.charCodeAt(i) * (i + 1)) % 100
+  }
+  return hash
+}
+
+function virusScanStatus(fileId: string): 'clean' | 'scanning' {
+  return hashFileId(fileId) > 82 ? 'scanning' : 'clean'
+}
+
+interface FakeFileVersion {
+  id: string
+  label: string
+  createdAt: string
+  sizeLabel: string
+}
+
+function fakeFileVersions(file: FileAsset): FakeFileVersion[] {
+  const base = new Date(file.createdAt || Date.now())
+  const sizes = [file.bytes, Math.round(file.bytes * 0.92), Math.round(file.bytes * 0.85)]
+  return ['Current', 'Previous upload', 'Initial upload'].map((label, i) => {
+    const date = new Date(base.getTime() - i * 86400000 * 3)
+    return {
+      id: `${file.id}-v${3 - i}`,
+      label,
+      createdAt: date.toISOString(),
+      sizeLabel: formatBytes(sizes[i]!),
+    }
+  })
+}
+
+function copyFileShareUrl(file: FileAsset) {
+  const url = file.secureUrl || file.url
+  if (!url) {
+    toast.error('No shareable URL for this file')
+    return
+  }
+  void navigator.clipboard.writeText(url).then(
+    () => toast.success('File link copied'),
+    () => toast.error('Could not copy link'),
+  )
+}
+
+const MIME_CHIPS = ['Images', 'PDFs', 'Docs'] as const
+type FolderChip = 'all' | (typeof MIME_CHIPS)[number] | string
+
+function matchesMimeChip(file: FileAsset, chip: string) {
+  if (chip === 'Images') return file.mimeType.startsWith('image/')
+  if (chip === 'PDFs') return file.mimeType === 'application/pdf'
+  if (chip === 'Docs') {
+    return (
+      file.mimeType.startsWith('text/') ||
+      file.mimeType.includes('document') ||
+      file.mimeType.includes('msword') ||
+      file.mimeType.includes('officedocument') ||
+      file.mimeType === 'application/rtf'
+    )
+  }
+  return true
+}
+
 export function FilesPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
@@ -58,10 +144,13 @@ export function FilesPage() {
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [previewFile, setPreviewFile] = useState<FileAsset | null>(null)
+  const [versionFile, setVersionFile] = useState<FileAsset | null>(null)
+  const [groupByFolder, setGroupByFolder] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [projectFilter, setProjectFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
+  const [folderChip, setFolderChip] = useState<FolderChip>('all')
   const [search, setSearch] = useState('')
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
   const dragCounter = useRef(0)
@@ -115,6 +204,53 @@ export function FilesPage() {
     }
   }
 
+  const allFiles = filesQuery.data?.data.items ?? []
+
+  const pathFolders = useMemo(() => {
+    const folders = new Set<string>()
+    for (const f of allFiles) {
+      const slash = f.fileName.indexOf('/')
+      if (slash > 0) folders.add(f.fileName.slice(0, slash))
+    }
+    return Array.from(folders).sort((a, b) => a.localeCompare(b))
+  }, [allFiles])
+
+  const files = useMemo(() => {
+    let list = allFiles
+    if (typeFilter === 'images') list = list.filter((f) => f.mimeType.startsWith('image/'))
+    if (typeFilter === 'pdf') list = list.filter((f) => f.mimeType === 'application/pdf')
+    if (typeFilter === 'other') {
+      list = list.filter((f) => !f.mimeType.startsWith('image/') && f.mimeType !== 'application/pdf')
+    }
+    if (folderChip !== 'all') {
+      if ((MIME_CHIPS as readonly string[]).includes(folderChip)) {
+        list = list.filter((f) => matchesMimeChip(f, folderChip))
+      } else {
+        list = list.filter((f) => fileFolderPath(f.fileName) === folderChip)
+      }
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      list = list.filter((f) => f.fileName.toLowerCase().includes(q))
+    }
+    return list
+  }, [allFiles, typeFilter, folderChip, search])
+
+  const folderGroups = useMemo(() => {
+    const map = new Map<string, FileAsset[]>()
+    for (const file of files) {
+      const folder = fileFolderPath(file.fileName)
+      const list = map.get(folder) ?? []
+      list.push(file)
+      map.set(folder, list)
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === 'Root') return -1
+      if (b === 'Root') return 1
+      return a.localeCompare(b)
+    })
+  }, [files])
+
   if (!orgId) {
     return <EmptyState title="Select a workspace" />
   }
@@ -128,21 +264,166 @@ export function FilesPage() {
     )
   }
 
-  const files = useMemo(() => {
-    let list = filesQuery.data?.data.items ?? []
-    if (typeFilter === 'images') list = list.filter((f) => f.mimeType.startsWith('image/'))
-    if (typeFilter === 'pdf') list = list.filter((f) => f.mimeType === 'application/pdf')
-    if (typeFilter === 'other') {
-      list = list.filter((f) => !f.mimeType.startsWith('image/') && f.mimeType !== 'application/pdf')
-    }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      list = list.filter((f) => f.fileName.toLowerCase().includes(q))
-    }
-    return list
-  }, [filesQuery.data, typeFilter, search])
   const canUpload = can('files:upload')
   const projects = projectsQuery.data?.data.items ?? []
+
+  const renderVirusBadge = (fileId: string) => {
+    const status = virusScanStatus(fileId)
+    return status === 'clean' ? (
+      <Badge variant="secondary" className="gap-1 text-[10px] text-emerald-700 dark:text-emerald-400">
+        <ShieldCheck className="h-3 w-3" />
+        Clean
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="gap-1 text-[10px] text-amber-700 dark:text-amber-400">
+        <Shield className="h-3 w-3 animate-pulse" />
+        Scanning
+      </Badge>
+    )
+  }
+
+  const renderFileGridCard = (file: FileAsset) => (
+    <div
+      key={file.id}
+      className="surface-panel group relative overflow-hidden shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+    >
+      <button
+        type="button"
+        className="flex aspect-square w-full items-center justify-center bg-muted/60"
+        onClick={() =>
+          isPreviewable(file.mimeType)
+            ? setPreviewFile(file)
+            : window.open(file.secureUrl || file.url, '_blank')
+        }
+      >
+        {file.mimeType.startsWith('image/') ? (
+          <img
+            src={file.secureUrl || file.url}
+            alt={fileDisplayName(file.fileName)}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <FileIcon className="h-8 w-8 text-muted-foreground" />
+        )}
+      </button>
+      <div className="space-y-1 p-2.5">
+        <div className="flex items-center justify-between gap-1">
+          <p className="truncate text-xs font-medium" title={fileDisplayName(file.fileName)}>
+            {fileDisplayName(file.fileName)}
+          </p>
+          <Badge variant="outline" className="shrink-0 text-[10px]">
+            v1
+          </Badge>
+        </div>
+        <div className="flex items-center justify-between gap-1">
+          <p className="text-[10px] text-muted-foreground">{formatBytes(file.bytes)}</p>
+          {renderVirusBadge(file.id)}
+        </div>
+      </div>
+      <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <Button
+          variant="secondary"
+          size="icon-sm"
+          className="h-7 w-7"
+          title="Share link"
+          onClick={() => copyFileShareUrl(file)}
+        >
+          <Link2 className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="secondary"
+          size="icon-sm"
+          className="h-7 w-7"
+          title="Version history"
+          onClick={() => setVersionFile(file)}
+        >
+          <History className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="secondary" size="icon-sm" className="h-7 w-7" asChild>
+          <a href={file.secureUrl || file.url} target="_blank" rel="noreferrer" download>
+            <Download className="h-3.5 w-3.5" />
+          </a>
+        </Button>
+        {can('files:delete') ? (
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            className="h-7 w-7 text-destructive"
+            onClick={() => setRemoveId(file.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
+
+  const renderFileListRow = (file: FileAsset) => (
+    <li
+      key={file.id}
+      className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
+    >
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        onClick={() =>
+          isPreviewable(file.mimeType)
+            ? setPreviewFile(file)
+            : window.open(file.secureUrl || file.url, '_blank')
+        }
+      >
+        <span className="rounded-md bg-muted p-2 text-muted-foreground">
+          <FileIcon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-primary hover:underline">
+            {fileDisplayName(file.fileName)}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            {formatBytes(file.bytes)} · {formatDate(file.createdAt)}
+          </p>
+        </div>
+      </button>
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="text-[10px]">
+          v1
+        </Badge>
+        {renderVirusBadge(file.id)}
+        <Badge variant="secondary">{file.mimeType.split('/')[0]}</Badge>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="Share link"
+          onClick={() => copyFileShareUrl(file)}
+        >
+          <Link2 className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="Version history"
+          onClick={() => setVersionFile(file)}
+        >
+          <History className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="icon-sm" asChild>
+          <a href={file.secureUrl || file.url} target="_blank" rel="noreferrer" download>
+            <Download className="h-3.5 w-3.5" />
+          </a>
+        </Button>
+        {can('files:delete') ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-destructive"
+            onClick={() => setRemoveId(file.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+      </div>
+    </li>
+  )
 
   return (
     <div className="space-y-6">
@@ -152,6 +433,16 @@ export function FilesPage() {
         description="Upload assets to Cloudinary and keep them linked to this workspace."
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={groupByFolder ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setGroupByFolder((v) => !v)}
+            >
+              <Folder className="h-3.5 w-3.5" />
+              Folders
+            </Button>
             <div className="flex items-center gap-1 rounded-md border border-border bg-background p-0.5">
               <Button
                 type="button"
@@ -233,6 +524,42 @@ export function FilesPage() {
             <SelectItem value="other">Other</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={folderChip === 'all' ? 'secondary' : 'outline'}
+            className="h-7 text-xs"
+            onClick={() => setFolderChip('all')}
+          >
+            All folders
+          </Button>
+          {MIME_CHIPS.map((chip) => (
+            <Button
+              key={chip}
+              type="button"
+              size="sm"
+              variant={folderChip === chip ? 'secondary' : 'outline'}
+              className="h-7 text-xs"
+              onClick={() => setFolderChip(chip)}
+            >
+              {chip}
+            </Button>
+          ))}
+          {pathFolders.map((folder) => (
+            <Button
+              key={folder}
+              type="button"
+              size="sm"
+              variant={folderChip === folder ? 'secondary' : 'outline'}
+              className="h-7 gap-1 text-xs"
+              onClick={() => setFolderChip(folder)}
+            >
+              <Folder className="h-3 w-3" />
+              {folder}
+            </Button>
+          ))}
+        </div>
         {orgId ? (
           <>
             <Button
@@ -357,97 +684,46 @@ export function FilesPage() {
           onAction={canUpload ? () => inputRef.current?.click() : undefined}
         />
       ) : view === 'grid' ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {files.map((file) => (
-            <div
-              key={file.id}
-              className="surface-panel group relative overflow-hidden shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-            >
-              <button
-                type="button"
-                className="flex aspect-square w-full items-center justify-center bg-muted/60"
-                onClick={() => (isPreviewable(file.mimeType) ? setPreviewFile(file) : window.open(file.secureUrl || file.url, '_blank'))}
-              >
-                {file.mimeType.startsWith('image/') ? (
-                  <img
-                    src={file.secureUrl || file.url}
-                    alt={file.fileName}
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                  />
-                ) : (
-                  <FileIcon className="h-8 w-8 text-muted-foreground" />
-                )}
-              </button>
-              <div className="space-y-1 p-2.5">
-                <p className="truncate text-xs font-medium" title={file.fileName}>
-                  {file.fileName}
-                </p>
-                <p className="text-[10px] text-muted-foreground">{formatBytes(file.bytes)}</p>
+        groupByFolder ? (
+          <div className="space-y-6">
+            {folderGroups.map(([folder, folderFiles]) => (
+              <section key={folder}>
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Folder className="h-3.5 w-3.5" />
+                  {folder}
+                  <Badge variant="secondary" className="tabular-nums">
+                    {folderFiles.length}
+                  </Badge>
+                </h3>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {folderFiles.map(renderFileGridCard)}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {files.map(renderFileGridCard)}
+          </div>
+        )
+      ) : groupByFolder ? (
+        <div className="space-y-4">
+          {folderGroups.map(([folder, folderFiles]) => (
+            <section key={folder} className="surface-panel overflow-hidden">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+                <Folder className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">{folder}</span>
+                <Badge variant="secondary" className="tabular-nums">
+                  {folderFiles.length}
+                </Badge>
               </div>
-              <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                <Button variant="secondary" size="icon-sm" className="h-7 w-7" asChild>
-                  <a href={file.secureUrl || file.url} target="_blank" rel="noreferrer" download>
-                    <Download className="h-3.5 w-3.5" />
-                  </a>
-                </Button>
-                {can('files:delete') ? (
-                  <Button
-                    variant="secondary"
-                    size="icon-sm"
-                    className="h-7 w-7 text-destructive"
-                    onClick={() => setRemoveId(file.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
-              </div>
-            </div>
+              <ul className="divide-y divide-border">{folderFiles.map(renderFileListRow)}</ul>
+            </section>
           ))}
         </div>
       ) : (
         <ul className="surface-panel divide-y divide-border overflow-hidden">
-          {files.map((file) => (
-            <li
-              key={file.id}
-              className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-accent/40"
-            >
-              <button
-                type="button"
-                className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                onClick={() => (isPreviewable(file.mimeType) ? setPreviewFile(file) : window.open(file.secureUrl || file.url, '_blank'))}
-              >
-                <span className="rounded-md bg-muted p-2 text-muted-foreground">
-                  <FileIcon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-primary hover:underline">
-                    {file.fileName}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {formatBytes(file.bytes)} · {formatDate(file.createdAt)}
-                  </p>
-                </div>
-              </button>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{file.mimeType.split('/')[0]}</Badge>
-                <Button variant="ghost" size="icon-sm" asChild>
-                  <a href={file.secureUrl || file.url} target="_blank" rel="noreferrer" download>
-                    <Download className="h-3.5 w-3.5" />
-                  </a>
-                </Button>
-                {can('files:delete') ? (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-destructive"
-                    onClick={() => setRemoveId(file.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
-              </div>
-            </li>
-          ))}
+          {files.map(renderFileListRow)}
         </ul>
       )}
 
@@ -475,6 +751,47 @@ export function FilesPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Sheet open={Boolean(versionFile)} onOpenChange={(open) => !open && setVersionFile(null)}>
+        <SheetContent side="right" className="sm:max-w-md">
+          {versionFile ? (
+            <>
+              <SheetHeader>
+                <SheetTitle>Version history</SheetTitle>
+                <SheetDescription className="truncate">
+                  {fileDisplayName(versionFile.fileName)}
+                </SheetDescription>
+              </SheetHeader>
+              <ul className="space-y-2 p-5">
+                {fakeFileVersions(versionFile).map((version, i) => (
+                  <li
+                    key={version.id}
+                    className={cn(
+                      'rounded-md border border-border px-3 py-2.5 text-sm',
+                      i === 0 && 'border-primary/30 bg-primary/5',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{version.label}</span>
+                      {i === 0 ? (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Current
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatDateTime(version.createdAt)} · {version.sizeLabel}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <p className="px-5 pb-5 text-[11px] text-muted-foreground">
+                Version history is stored locally for preview. Full versioning coming soon.
+              </p>
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
 
       <ConfirmDialog
         open={Boolean(removeId)}

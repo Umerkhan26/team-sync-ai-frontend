@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { LifeBuoy, Mail, Search } from 'lucide-react'
+import { Activity, LifeBuoy, Mail, Search } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -65,9 +65,36 @@ const FAQS: FaqEntry[] = [
     category: 'Billing',
     question: 'Is there a paid plan?',
     answer:
-      'TeamSync AI is currently free while in early access. Billing and paid plans are planned for a future release.',
+      'Pro and Enterprise plans are available under Billing. Stripe checkout is stubbed during early access.',
   },
 ]
+
+const CHANGELOG = [
+  {
+    version: '0.9.0',
+    date: '2026-07-28',
+    items: ['AI assistant with saved prompts and credit meter', 'Admin SSO wizard stub', 'Billing seat management'],
+  },
+  {
+    version: '0.8.2',
+    date: '2026-07-15',
+    items: ['Custom roles and audit log', 'Bulk invite from CSV', 'Command palette search'],
+  },
+  {
+    version: '0.8.0',
+    date: '2026-07-01',
+    items: ['Real-time chat and presence', 'Document editor with Tiptap', 'Project templates'],
+  },
+] as const
+
+const STATUS_SERVICES = [
+  { name: 'API', status: 'operational' as const },
+  { name: 'Web app', status: 'operational' as const },
+  { name: 'Real-time (WebSocket)', status: 'operational' as const },
+  { name: 'File uploads', status: 'operational' as const },
+  { name: 'AI generation', status: 'operational' as const },
+  { name: 'Email delivery', status: 'operational' as const },
+] as const
 
 const SUPPORT_EMAIL = 'support@teamsync.ai'
 
@@ -94,12 +121,14 @@ export function HelpPage() {
     return Array.from(map.entries())
   }, [filtered])
 
+  const allOperational = STATUS_SERVICES.every((s) => s.status === 'operational')
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Support"
         title="Help & support"
-        description="Search frequently asked questions or reach out to our team."
+        description="Search frequently asked questions, check system status, or reach out to our team."
         actions={
           <Button asChild size="sm">
             <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('TeamSync AI support request')}`}>
@@ -109,6 +138,26 @@ export function HelpPage() {
           </Button>
         }
       />
+
+      <div className="surface-panel flex flex-wrap items-center gap-4 p-4">
+        <div className="flex items-center gap-2">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${allOperational ? 'bg-success' : 'bg-warning'} animate-pulse`}
+          />
+          <p className="text-sm font-medium">
+            {allOperational ? 'All systems operational' : 'Partial outage detected'}
+          </p>
+        </div>
+        <Activity className="h-4 w-4 text-muted-foreground" />
+        <ul className="flex flex-1 flex-wrap gap-x-4 gap-y-1">
+          {STATUS_SERVICES.map((svc) => (
+            <li key={svc.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              {svc.name}
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="relative max-w-lg">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -160,11 +209,32 @@ export function HelpPage() {
         </div>
       )}
 
+      <section className="space-y-3">
+        <h2 className="app-title text-sm">Changelog</h2>
+        <div className="surface-panel divide-y divide-border overflow-hidden">
+          {CHANGELOG.map((entry) => (
+            <div key={entry.version} className="px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  v{entry.version}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{entry.date}</span>
+              </div>
+              <ul className="mt-2 list-inside list-disc space-y-0.5 text-sm text-muted-foreground">
+                {entry.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="surface-panel flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-medium">Still need help?</p>
           <p className="text-xs text-muted-foreground">
-            Email {SUPPORT_EMAIL} and we\u2019ll get back to you within one business day.
+            Email {SUPPORT_EMAIL} and we&apos;ll get back to you within one business day.
           </p>
         </div>
         <Button variant="outline" size="sm" asChild>

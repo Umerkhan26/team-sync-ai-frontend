@@ -1,4 +1,4 @@
-import { MessageCircle } from 'lucide-react'
+import { Bookmark, MessageCircle, Pin } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PresenceDot } from '@/components/shared/PresenceDot'
 import { ReactionBar } from '@/features/chat/components/ReactionBar'
@@ -13,6 +13,12 @@ interface MessageRowProps {
   currentUserId?: string
   onToggleReaction: (emoji: string) => void
   onOpenThread?: () => void
+  onPin?: () => void
+  onUnpin?: () => void
+  onBookmark?: () => void
+  onRemoveBookmark?: () => void
+  isPinned?: boolean
+  isBookmarked?: boolean
   isThreadReply?: boolean
 }
 
@@ -22,13 +28,22 @@ export function MessageRow({
   currentUserId,
   onToggleReaction,
   onOpenThread,
+  onPin,
+  onUnpin,
+  onBookmark,
+  onRemoveBookmark,
+  isPinned = false,
+  isBookmarked = false,
   isThreadReply = false,
 }: MessageRowProps) {
   const replyCount = message.replyCount ?? 0
   const { status } = usePresence(author?.id)
 
   return (
-    <div className="group relative flex gap-3 rounded-lg px-2.5 py-2 transition ts-row-hover">
+    <div
+      id={`msg-${message.id}`}
+      className="group relative flex gap-3 rounded-lg px-2.5 py-2 transition ts-row-hover"
+    >
       <div className="relative mt-0.5 shrink-0">
         <Avatar className="h-9 w-9">
           <AvatarImage src={author?.avatarUrl || undefined} alt="" />
@@ -45,6 +60,42 @@ export function MessageRow({
           {message.editedAt ? (
             <span className="text-[10px] text-muted-foreground">(edited)</span>
           ) : null}
+          {isPinned ? (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary">
+              <Pin className="h-2.5 w-2.5" />
+              Pinned
+            </span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            {onPin || onUnpin ? (
+              <button
+                type="button"
+                onClick={isPinned ? onUnpin : onPin}
+                className={cn(
+                  'rounded p-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground',
+                  isPinned && 'text-primary opacity-100',
+                )}
+                title={isPinned ? 'Unpin message' : 'Pin message'}
+                aria-label={isPinned ? 'Unpin message' : 'Pin message'}
+              >
+                <Pin className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {onBookmark || onRemoveBookmark ? (
+              <button
+                type="button"
+                onClick={isBookmarked ? onRemoveBookmark : onBookmark}
+                className={cn(
+                  'rounded p-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground',
+                  isBookmarked && 'text-primary',
+                )}
+                title={isBookmarked ? 'Remove bookmark' : 'Bookmark message'}
+                aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark message'}
+              >
+                <Bookmark className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
         </div>
         {message.body ? (
           <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground/90">

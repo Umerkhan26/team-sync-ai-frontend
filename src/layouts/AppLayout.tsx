@@ -299,7 +299,7 @@ export function AppLayout() {
         </div>
       ) : null}
 
-      <div className="flex min-h-screen flex-col">
+      <div className="ts-content-frame flex min-h-screen flex-col">
         <header className="ts-topbar sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 sm:px-4">
           <Button
             variant="ghost"

@@ -8,8 +8,10 @@ import { toast } from 'sonner'
 import {
   Bell,
   Building2,
+  Keyboard,
   KeyRound,
   Laptop2,
+  MonitorSmartphone,
   Moon,
   Palette,
   Shield,
@@ -24,6 +26,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -72,6 +82,41 @@ const NOTIF_ROWS: {
   { key: 'inAppMentions', label: 'Mentions in comments & chat', group: 'inApp' },
   { key: 'inAppInvites', label: 'Workspace invitations', group: 'inApp' },
 ]
+
+const KEYBOARD_SHORTCUTS = [
+  { keys: ['⌘', 'K'], label: 'Search / command palette', alt: 'Ctrl+K' },
+  { keys: ['⌘', 'J'], label: 'Open AI assistant', alt: 'Ctrl+J' },
+  { keys: ['⌘', 'B'], label: 'Toggle sidebar', alt: 'Ctrl+B' },
+  { keys: ['Esc'], label: 'Close dialogs and panels' },
+  { keys: ['?'], label: 'Show keyboard shortcuts (this dialog)' },
+] as const
+
+const STUB_DEVICES = [
+  {
+    id: 'current',
+    name: 'This device',
+    browser: 'Current browser',
+    location: 'Local session',
+    lastActive: 'Now',
+    current: true,
+  },
+  {
+    id: 'macbook',
+    name: 'MacBook Pro',
+    browser: 'Chrome 128',
+    location: 'Karachi, PK',
+    lastActive: '2 hours ago',
+    current: false,
+  },
+  {
+    id: 'iphone',
+    name: 'iPhone 15',
+    browser: 'Safari Mobile',
+    location: 'Karachi, PK',
+    lastActive: 'Yesterday',
+    current: false,
+  },
+] as const
 
 export function SettingsPage() {
   const dispatch = useAppDispatch()
@@ -198,6 +243,44 @@ export function SettingsPage() {
         eyebrow="Account"
         title="Settings"
         description="Personal preferences for your account. Workspace admin lives under Admin."
+        actions={
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Keyboard className="h-3.5 w-3.5" />
+                Shortcuts
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Keyboard shortcuts</DialogTitle>
+                <DialogDescription>
+                  Quick actions across TeamSync AI. Use Ctrl instead of ⌘ on Windows/Linux.
+                </DialogDescription>
+              </DialogHeader>
+              <ul className="divide-y divide-border">
+                {KEYBOARD_SHORTCUTS.map((shortcut) => (
+                  <li
+                    key={shortcut.label}
+                    className="flex items-center justify-between gap-4 py-2.5 text-sm"
+                  >
+                    <span>{shortcut.label}</span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {shortcut.keys.map((key) => (
+                        <kbd
+                          key={key}
+                          className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px]"
+                        >
+                          {key}
+                        </kbd>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </DialogContent>
+          </Dialog>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
@@ -444,23 +527,87 @@ export function SettingsPage() {
                 </Button>
               </div>
               <div className="surface-panel max-w-lg space-y-3 p-5">
-                <div className="flex items-center gap-2">
-                  <Laptop2 className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="app-title text-sm">Active sessions</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Laptop2 className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="app-title text-sm">Connected devices</h3>
+                  </div>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs">
+                        <Keyboard className="h-3 w-3" />
+                        Shortcuts
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Keyboard shortcuts</DialogTitle>
+                        <DialogDescription>
+                          Use Ctrl instead of ⌘ on Windows/Linux.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <ul className="divide-y divide-border">
+                        {KEYBOARD_SHORTCUTS.map((shortcut) => (
+                          <li
+                            key={shortcut.label}
+                            className="flex items-center justify-between gap-4 py-2.5 text-sm"
+                          >
+                            <span>{shortcut.label}</span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              {shortcut.keys.map((key) => (
+                                <kbd
+                                  key={key}
+                                  className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px]"
+                                >
+                                  {key}
+                                </kbd>
+                              ))}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </DialogContent>
+                  </Dialog>
                 </div>
                 <ul className="divide-y divide-border overflow-hidden rounded-md border border-border text-sm">
-                  <li className="flex items-center justify-between px-3 py-2.5">
-                    <div>
-                      <p className="font-medium">This device</p>
-                      <p className="text-xs text-muted-foreground">Current session</p>
-                    </div>
-                    <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">
-                      Active
-                    </span>
-                  </li>
+                  {STUB_DEVICES.map((device) => (
+                    <li
+                      key={device.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <MonitorSmartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium">{device.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {device.browser} · {device.location}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {device.current ? (
+                          <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-medium text-success">
+                            Active
+                          </span>
+                        ) : (
+                          <>
+                            <p className="text-[11px] text-muted-foreground">{device.lastActive}</p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mt-0.5 h-6 text-[11px] text-destructive"
+                              onClick={() => toast.success('Session revoked (stub)')}
+                            >
+                              Revoke
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  ))}
                 </ul>
                 <p className="text-[11px] text-muted-foreground">
-                  Per-device session management is coming soon.
+                  Full session management with device fingerprinting is coming soon.
                 </p>
               </div>
             </div>

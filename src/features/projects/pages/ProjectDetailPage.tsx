@@ -255,7 +255,7 @@ export function ProjectDetailPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h2 className="app-title text-base">Project docs</h2>
-                <Link to="/app/docs" className="text-xs font-medium text-primary hover:underline">
+                <Link to="/app/documents" className="text-xs font-medium text-primary hover:underline">
                   All docs
                 </Link>
               </div>
@@ -268,7 +268,7 @@ export function ProjectDetailPage() {
                   {docs.map((doc) => (
                     <li key={doc.id}>
                       <Link
-                        to={`/app/docs/${doc.id}`}
+                        to={`/app/documents/${doc.id}`}
                         className="flex items-center gap-2.5 px-3.5 py-2.5 transition-colors hover:bg-accent/40"
                       >
                         <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />

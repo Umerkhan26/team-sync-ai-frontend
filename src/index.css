@@ -75,44 +75,49 @@
   --ts-sidebar-hover: hsl(205 26% 17%);
   --ts-sidebar-active: hsl(204 45% 24%);
   --ts-sidebar-border: hsl(205 20% 17%);
-  --ts-topbar: hsl(0 0% 100% / 0.86);
+  --ts-topbar: hsl(0 0% 100%);
+  --ts-elevated: hsl(0 0% 100%);
 }
 
 [data-theme="dark"] {
-  /* Layered dark: cooler canvas, elevated cards, distinct navy shell */
-  --ts-background: hsl(210 28% 11%);
-  --ts-foreground: hsl(210 20% 96%);
-  --ts-muted: hsl(210 22% 16%);
+  /*
+   * Elevation ladder — each step must read as a distinct surface:
+   * sidebar ~3.5% → canvas ~8% → topbar ~11.5% → card ~14.5% → elevated/popover ~17–18%
+   */
+  --ts-background: hsl(218 30% 8%);
+  --ts-foreground: hsl(210 28% 96%);
+  --ts-muted: hsl(216 22% 12%);
   --ts-muted-foreground: hsl(210 12% 68%);
-  --ts-card: hsl(210 26% 14%);
-  --ts-card-foreground: hsl(210 20% 96%);
-  --ts-popover: hsl(210 28% 15%);
-  --ts-popover-foreground: hsl(210 20% 96%);
-  --ts-border: hsl(210 18% 22%);
-  --ts-input: hsl(210 18% 20%);
-  --ts-ring: hsl(204 72% 56%);
-  --ts-primary: hsl(204 68% 52%);
+  --ts-card: hsl(215 24% 14.5%);
+  --ts-card-foreground: hsl(210 28% 96%);
+  --ts-popover: hsl(214 26% 17.5%);
+  --ts-popover-foreground: hsl(210 28% 96%);
+  --ts-border: hsl(214 16% 26%);
+  --ts-input: hsl(214 18% 16%);
+  --ts-ring: hsl(204 78% 56%);
+  --ts-primary: hsl(204 72% 54%);
   --ts-primary-foreground: hsl(210 45% 98%);
-  --ts-secondary: hsl(210 20% 18%);
+  --ts-secondary: hsl(214 20% 16%);
   --ts-secondary-foreground: hsl(210 18% 92%);
-  --ts-accent: hsl(204 36% 20%);
-  --ts-accent-foreground: hsl(204 70% 82%);
-  --ts-destructive: hsl(0 70% 52%);
+  --ts-accent: hsl(204 36% 16%);
+  --ts-accent-foreground: hsl(204 75% 84%);
+  --ts-destructive: hsl(0 72% 54%);
   --ts-destructive-foreground: hsl(0 0% 100%);
-  --ts-success: hsl(152 52% 42%);
+  --ts-success: hsl(152 55% 42%);
   --ts-success-foreground: hsl(0 0% 100%);
-  --ts-warning: hsl(38 90% 50%);
+  --ts-warning: hsl(38 92% 52%);
   --ts-warning-foreground: hsl(0 0% 8%);
-  --ts-info: hsl(204 75% 58%);
+  --ts-info: hsl(204 78% 58%);
   --ts-info-foreground: hsl(0 0% 100%);
-  --ts-brand-secondary: hsl(204 65% 55%);
-  --ts-sidebar: hsl(215 36% 8%);
-  --ts-sidebar-foreground: hsl(210 20% 94%);
-  --ts-sidebar-muted: hsl(210 12% 58%);
-  --ts-sidebar-hover: hsl(215 28% 14%);
-  --ts-sidebar-active: hsl(204 55% 28%);
-  --ts-sidebar-border: hsl(215 24% 14%);
-  --ts-topbar: hsl(210 26% 13% / 0.92);
+  --ts-brand-secondary: hsl(204 68% 56%);
+  --ts-sidebar: hsl(222 48% 3.5%);
+  --ts-sidebar-foreground: hsl(210 22% 95%);
+  --ts-sidebar-muted: hsl(214 12% 58%);
+  --ts-sidebar-hover: hsl(220 34% 10%);
+  --ts-sidebar-active: hsl(204 58% 28%);
+  --ts-sidebar-border: hsl(220 30% 9%);
+  --ts-topbar: hsl(215 26% 11.5%);
+  --ts-elevated: hsl(214 24% 17%);
 }
 
 @layer base {
@@ -163,10 +168,8 @@
   }
 
   [data-theme="dark"] body.surface-app {
-    background-image:
-      radial-gradient(ellipse 90% 55% at 50% -20%, hsl(204 50% 28% / 0.18), transparent 55%),
-      linear-gradient(180deg, hsl(210 28% 12%), hsl(210 28% 10%));
-    background-attachment: fixed;
+    background-color: var(--ts-background);
+    background-image: none;
   }
 
   #root {
@@ -204,19 +207,26 @@
     color: var(--ts-card-foreground);
     border: 1px solid var(--ts-border);
     border-radius: var(--radius-lg);
-    box-shadow: 0 1px 0 hsl(0 0% 100% / 0.03) inset;
+    box-shadow: 0 1px 2px hsl(210 30% 10% / 0.04);
   }
 
   [data-theme="dark"] .surface-panel {
-    background: linear-gradient(
-      165deg,
-      color-mix(in srgb, var(--ts-card) 92%, hsl(204 60% 40%)),
-      var(--ts-card)
-    );
-    border-color: color-mix(in srgb, var(--ts-border) 85%, hsl(210 30% 40%));
+    background: var(--ts-card);
+    border-color: hsl(214 14% 28%);
     box-shadow:
-      0 1px 0 hsl(0 0% 100% / 0.04) inset,
-      0 8px 24px -12px hsl(210 40% 2% / 0.55);
+      0 1px 0 hsl(0 0% 100% / 0.06) inset,
+      0 12px 32px -16px hsl(222 50% 2% / 0.8);
+  }
+
+  .surface-elevated {
+    background: var(--ts-elevated, var(--ts-card));
+    border: 1px solid var(--ts-border);
+    border-radius: var(--radius-lg);
+  }
+
+  [data-theme="dark"] .surface-elevated {
+    background: var(--ts-elevated);
+    border-color: hsl(214 16% 28%);
   }
 
   .mesh-panel {
@@ -232,24 +242,31 @@
   }
 
   [data-theme="dark"] .ts-sidebar {
-    background: linear-gradient(180deg, hsl(215 38% 9%), hsl(215 40% 6.5%));
-    box-shadow: 1px 0 0 hsl(210 20% 100% / 0.03);
+    background: linear-gradient(180deg, hsl(222 50% 5%), hsl(222 52% 3%));
+    box-shadow: 6px 0 32px -10px hsl(222 60% 0% / 0.7);
   }
 
   .ts-topbar {
     background: var(--ts-topbar);
     border-color: var(--ts-border);
-    backdrop-filter: blur(14px);
+    backdrop-filter: blur(16px);
   }
 
   [data-theme="dark"] .ts-topbar {
-    background: linear-gradient(
-      180deg,
-      hsl(210 26% 14% / 0.94),
-      hsl(210 26% 12% / 0.88)
-    );
-    border-bottom-color: color-mix(in srgb, var(--ts-border) 70%, hsl(204 40% 35%));
-    box-shadow: 0 1px 0 hsl(0 0% 100% / 0.03);
+    background: linear-gradient(180deg, hsl(215 26% 13%), hsl(215 26% 10.5%));
+    border-bottom-color: hsl(214 16% 20%);
+    box-shadow:
+      0 1px 0 hsl(0 0% 100% / 0.05),
+      0 8px 24px -16px hsl(222 50% 0% / 0.55);
+  }
+
+  .ts-content-frame {
+    background: var(--ts-background);
+    min-height: 100vh;
+  }
+
+  [data-theme="dark"] .ts-content-frame {
+    background: linear-gradient(180deg, hsl(218 28% 9%), hsl(218 30% 7.5%));
   }
 
   .ts-main-canvas {
@@ -288,18 +305,14 @@
   }
 
   .ts-kanban-column {
-    background: color-mix(in srgb, var(--ts-muted) 55%, var(--ts-card));
+    background: var(--ts-muted);
     border: 1px solid var(--ts-border);
     border-radius: var(--radius-xl);
-    box-shadow: 0 1px 0 hsl(0 0% 100% / 0.03) inset;
   }
 
   [data-theme="dark"] .ts-kanban-column {
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--ts-card) 88%, hsl(210 30% 18%)),
-      color-mix(in srgb, var(--ts-muted) 70%, transparent)
-    );
+    background: hsl(215 24% 11%);
+    border-color: hsl(214 16% 22%);
   }
 
   .ts-chat-shell {
@@ -311,6 +324,10 @@
     box-shadow:
       0 1px 0 hsl(0 0% 100% / 0.04) inset,
       0 18px 40px -28px hsl(210 40% 4% / 0.45);
+  }
+
+  [data-theme="dark"] .ts-chat-shell {
+    border-color: hsl(214 16% 24%);
   }
 
   .ts-prose-output {
@@ -327,11 +344,29 @@
     padding: 0.55rem;
     border-radius: var(--radius-lg);
     border: 1px solid var(--ts-border);
-    background: color-mix(in srgb, var(--ts-card) 88%, transparent);
+    background: var(--ts-card);
   }
 
   [data-theme="dark"] .ts-filter-bar {
-    background: color-mix(in srgb, var(--ts-card) 70%, hsl(210 30% 12%));
+    background: var(--ts-elevated);
+    border-color: hsl(214 16% 26%);
+  }
+
+  .ts-week-chart {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.35rem;
+    align-items: end;
+    height: 5.5rem;
+  }
+
+  .ts-week-chart > span {
+    display: block;
+    width: 100%;
+    border-radius: 4px 4px 2px 2px;
+    background: linear-gradient(180deg, var(--ts-primary), var(--ts-brand-secondary));
+    min-height: 4px;
+    opacity: 0.85;
   }
 
   .animate-in-fade {
