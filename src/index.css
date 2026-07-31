@@ -270,6 +270,70 @@
     background: linear-gradient(90deg, var(--ts-primary), var(--ts-brand-secondary));
   }
 
+  .module-header {
+    position: relative;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--ts-border) 80%, transparent);
+  }
+
+  .module-header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 3.5rem;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--ts-primary), transparent);
+  }
+
+  .ts-kanban-column {
+    background: color-mix(in srgb, var(--ts-muted) 55%, var(--ts-card));
+    border: 1px solid var(--ts-border);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 1px 0 hsl(0 0% 100% / 0.03) inset;
+  }
+
+  [data-theme="dark"] .ts-kanban-column {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ts-card) 88%, hsl(210 30% 18%)),
+      color-mix(in srgb, var(--ts-muted) 70%, transparent)
+    );
+  }
+
+  .ts-chat-shell {
+    min-height: calc(100vh - 8.5rem);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    border: 1px solid var(--ts-border);
+    background: var(--ts-card);
+    box-shadow:
+      0 1px 0 hsl(0 0% 100% / 0.04) inset,
+      0 18px 40px -28px hsl(210 40% 4% / 0.45);
+  }
+
+  .ts-prose-output {
+    white-space: pre-wrap;
+    font-size: 0.9rem;
+    line-height: 1.65;
+  }
+
+  .ts-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--ts-border);
+    background: color-mix(in srgb, var(--ts-card) 88%, transparent);
+  }
+
+  [data-theme="dark"] .ts-filter-bar {
+    background: color-mix(in srgb, var(--ts-card) 70%, hsl(210 30% 12%));
+  }
+
   .animate-in-fade {
     animation: ts-fade 160ms ease-out;
   }

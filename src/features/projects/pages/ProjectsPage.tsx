@@ -256,6 +256,7 @@ export function ProjectsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Portfolio"
         title="Projects"
         description="Organize delivery streams for your organization."
         actions={

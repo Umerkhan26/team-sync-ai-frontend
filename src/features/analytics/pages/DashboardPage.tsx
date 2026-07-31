@@ -313,6 +313,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Overview"
         title={
           isGuest
             ? `Welcome, ${user?.name?.split(' ')[0] || 'guest'}`

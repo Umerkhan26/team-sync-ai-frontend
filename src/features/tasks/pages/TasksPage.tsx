@@ -246,8 +246,9 @@ export function TasksPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Delivery"
         title="Tasks"
-        description="Kanban board — drag cards across Todo → In Progress → In Review → Done."
+        description="Kanban, list, and calendar — drag cards across Todo → In Progress → In Review → Done."
         actions={
           can('tasks:create') ? (
             <Button
@@ -264,7 +265,7 @@ export function TasksPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="ts-filter-bar mb-4">
         <Label className="text-muted-foreground">Project</Label>
         <Select
           value={projectFilter || 'all'}
@@ -520,8 +521,8 @@ export function TasksPage() {
             <section
               key={column.id}
               className={cn(
-                'flex flex-col rounded-xl border border-border bg-muted/30 p-2.5 transition-colors',
-                draggingId && can('tasks:update') && 'border-dashed border-primary/40 bg-primary/5',
+                'ts-kanban-column flex flex-col p-2.5 transition-colors',
+                draggingId && can('tasks:update') && 'border-dashed border-primary/50 bg-primary/5',
               )}
               onDragOver={(e) => {
                 if (can('tasks:update')) e.preventDefault()

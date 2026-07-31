@@ -65,6 +65,7 @@ export function BillingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Plan & seats"
         title="Billing"
         description={`${org?.name || 'Workspace'} · current plan: ${currentPlan}. Stripe checkout is stubbed for now.`}
       />

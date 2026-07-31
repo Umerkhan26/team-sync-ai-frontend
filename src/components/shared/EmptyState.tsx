@@ -23,21 +23,25 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-card/40 px-6 py-16 text-center',
+        'relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border border-dashed border-border/80 bg-gradient-to-b from-card/80 to-muted/20 px-6 py-16 text-center',
         className,
       )}
     >
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-inset ring-primary/15">
-        {icon ?? <Inbox className="h-5 w-5" />}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl"
+      />
+      <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20">
+        {icon ?? <Inbox className="h-6 w-6" />}
       </div>
-      <div className="space-y-1.5">
+      <div className="relative space-y-1.5">
         <h3 className="app-title text-base text-foreground">{title}</h3>
         {description ? (
-          <p className="max-w-md text-sm text-muted-foreground">{description}</p>
+          <p className="max-w-md text-sm leading-relaxed text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {actionLabel && onAction ? (
-        <Button onClick={onAction} size="sm" className="mt-1">
+        <Button onClick={onAction} size="sm" className="relative mt-1">
           {actionLabel}
         </Button>
       ) : null}

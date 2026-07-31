@@ -154,6 +154,7 @@ export function TeamsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="People"
         title="Teams"
         description="Group members into teams to organize projects and ownership."
         actions={

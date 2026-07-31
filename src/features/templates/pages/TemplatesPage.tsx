@@ -133,8 +133,9 @@ export function TemplatesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Jump-start"
         title="Templates"
-        description="Jump-start projects, tasks, and documents with ready-made templates."
+        description="Ready-made starters for projects, tasks, and documents."
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
@@ -153,9 +154,16 @@ export function TemplatesPage() {
               {visible.map((template) => {
                 const meta = KIND_META[template.kind]
                 return (
-                  <div key={template.id} className="surface-panel flex flex-col gap-3 p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <div
+                    key={template.id}
+                    className="surface-panel group relative flex flex-col gap-3 overflow-hidden p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40"
+                  >
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-primary/10 transition group-hover:scale-125"
+                    />
+                    <div className="relative flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                         <meta.icon className="h-3.5 w-3.5" />
                         {meta.label}
                       </span>
@@ -167,13 +175,15 @@ export function TemplatesPage() {
                         ))}
                       </div>
                     </div>
-                    <div>
+                    <div className="relative">
                       <p className="app-title text-sm">{template.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {template.description}
+                      </p>
                     </div>
                     <Button
                       size="sm"
-                      className="mt-auto self-start"
+                      className="relative mt-auto self-start"
                       disabled={!canUse[template.kind]}
                       onClick={() => applyTemplate(template)}
                     >

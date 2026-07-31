@@ -16,7 +16,20 @@ export function LoadingState({
     <div className={cn('space-y-3', className)} role="status" aria-live="polite">
       <span className="sr-only">{label}</span>
       {Array.from({ length: rows }).map((_, index) => (
-        <Skeleton key={index} className="h-12 w-full" />
+        <div
+          key={index}
+          className="surface-panel overflow-hidden p-3"
+          style={{ animationDelay: `${index * 40}ms` }}
+        >
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-3.5 w-[55%]" />
+              <Skeleton className="h-3 w-[35%]" />
+            </div>
+            <Skeleton className="h-6 w-16 rounded-md" />
+          </div>
+        </div>
       ))}
     </div>
   )
@@ -26,10 +39,19 @@ export function PageLoading() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-72" />
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-4 w-80 max-w-full" />
       </div>
-      <LoadingState rows={5} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="surface-panel p-4">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-3 h-8 w-12" />
+          </div>
+        ))}
+      </div>
+      <LoadingState rows={4} />
     </div>
   )
 }

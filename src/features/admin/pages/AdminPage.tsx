@@ -399,6 +399,7 @@ export function AdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Governance"
         title="Admin"
         description={`Workspace controls for ${org.name}. You are signed in as ${roleName}.`}
         actions={

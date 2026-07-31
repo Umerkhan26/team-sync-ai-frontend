@@ -389,6 +389,7 @@ export function MeetingsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Calendar"
         title="Meetings"
         description="Schedule meetings, share join links, and generate AI summaries."
         actions={

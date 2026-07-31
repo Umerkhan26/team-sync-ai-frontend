@@ -195,6 +195,7 @@ export function SettingsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Account"
         title="Settings"
         description="Personal preferences for your account. Workspace admin lives under Admin."
       />

@@ -97,6 +97,7 @@ export function HelpPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Support"
         title="Help & support"
         description="Search frequently asked questions or reach out to our team."
         actions={

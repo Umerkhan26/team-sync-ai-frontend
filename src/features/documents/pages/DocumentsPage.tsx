@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { JSONContent } from '@tiptap/react'
-import { History, Plus, RotateCcw } from 'lucide-react'
+import { History, Plus, RotateCcw, FileText } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -82,8 +82,9 @@ export function DocumentsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Knowledge"
         title="Documents"
-        description="Lightweight docs for specs, notes, and plans."
+        description="Specs, notes, and plans — versioned and searchable."
         actions={
           <Button onClick={() => setOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -106,22 +107,25 @@ export function DocumentsPage() {
           onAction={() => setOpen(true)}
         />
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {documents.map((doc) => (
             <li key={doc.id}>
               <Link
                 to={`/app/documents/${doc.id}`}
-                className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-accent/40"
+                className="surface-panel group flex h-full flex-col gap-3 p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40"
               >
-                <div>
-                  <p className="font-medium">{doc.title}</p>
-                  <p className="line-clamp-1 text-xs text-muted-foreground">
-                    {doc.content?.slice(0, 120) || 'Empty document'}
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:scale-105">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{doc.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                    {doc.content?.slice(0, 140) || 'Empty document — open to start writing.'}
                   </p>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {formatDate(doc.updatedAt)}
-                </span>
+                <p className="text-[11px] text-muted-foreground">
+                  Updated {formatDate(doc.updatedAt)}
+                </p>
               </Link>
             </li>
           ))}

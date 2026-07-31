@@ -393,8 +393,9 @@ export function ChatPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Collaboration"
         title="Chat"
-        description="Channels, direct messages, and threaded conversations for your team."
+        description="Channels, direct messages, presence, and threaded conversations."
         actions={
           <>
             <Button variant="outline" onClick={() => setDmDialogOpen(true)}>
@@ -420,7 +421,7 @@ export function ChatPage() {
       ) : (
         <div
           className={cn(
-            'grid min-h-[70vh] overflow-hidden rounded-xl border border-border bg-card shadow-sm',
+            'ts-chat-shell grid',
             activeThreadId ? 'lg:grid-cols-[260px_1fr_340px]' : 'lg:grid-cols-[260px_1fr]',
           )}
         >

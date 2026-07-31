@@ -175,8 +175,9 @@ export function AppLayout() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }, collapsed: boolean) =>
     cn(
-      'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium text-[color:var(--ts-sidebar-muted)] transition hover:bg-[color:var(--ts-sidebar-hover)] hover:text-[color:var(--ts-sidebar-foreground)]',
-      isActive && 'bg-[color:var(--ts-sidebar-active)] text-white',
+      'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-[color:var(--ts-sidebar-muted)] transition-all duration-150 hover:bg-[color:var(--ts-sidebar-hover)] hover:text-[color:var(--ts-sidebar-foreground)]',
+      isActive &&
+        'bg-[color:var(--ts-sidebar-active)] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]',
       collapsed && 'justify-center px-0',
     )
 
@@ -458,7 +459,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="ts-main-canvas mx-auto w-full max-w-[1440px] flex-1 animate-in-fade px-4 py-5 sm:px-6 lg:px-8">
+        <main className="ts-main-canvas mx-auto w-full max-w-[1440px] flex-1 animate-in-fade px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>

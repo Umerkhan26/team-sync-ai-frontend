@@ -108,6 +108,7 @@ export function ProjectDetailPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Project"
         title={project.name}
         description={
           project.description ||

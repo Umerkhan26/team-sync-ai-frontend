@@ -147,6 +147,7 @@ export function FilesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Assets"
         title="Files"
         description="Upload assets to Cloudinary and keep them linked to this workspace."
         actions={
@@ -201,12 +202,12 @@ export function FilesPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="ts-filter-bar">
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search files…"
-          className="h-8 max-w-xs"
+          className="h-8 max-w-xs border-0 bg-transparent shadow-none focus-visible:ring-0"
         />
         <Select value={projectFilter} onValueChange={setProjectFilter}>
           <SelectTrigger className="h-8 w-[180px]">

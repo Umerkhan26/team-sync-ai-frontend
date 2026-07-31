@@ -76,120 +76,138 @@ export function AiAssistantPage() {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="AI Assistant"
-        description="Generate task descriptions, summaries, and sprint plans."
-        actions={
-          <Button
-            variant="outline"
-            onClick={() => suggest.mutate()}
-            disabled={suggest.isPending}
-          >
-            {suggest.isPending ? 'Thinking…' : 'Suggest next actions'}
-          </Button>
-        }
-      />
-
-      <Tabs defaultValue="task">
-        <TabsList>
-          <TabsTrigger value="task">Task description</TabsTrigger>
-          <TabsTrigger value="summary">Summarize</TabsTrigger>
-          <TabsTrigger value="sprint">Sprint plan</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="task">
-          <form
-            className="space-y-4"
-            onSubmit={taskForm.handleSubmit((values) =>
-              generate.mutate({
-                prompt: values.prompt,
-                feature: 'task-description',
-                systemInstruction:
-                  'You are a product engineer. Expand the brief into a clear task description with acceptance criteria and technical notes.',
-              }),
-            )}
-          >
-            <div className="space-y-2">
-              <Label htmlFor="task-prompt">Brief</Label>
-              <Textarea
-                id="task-prompt"
-                rows={5}
-                placeholder="Add OAuth login for Google…"
-                {...taskForm.register('prompt')}
-              />
-            </div>
-            <Button type="submit" disabled={generate.isPending}>
-              {generate.isPending ? 'Generating…' : 'Generate description'}
+    <div className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
+      <div className="space-y-4">
+        <PageHeader
+          eyebrow="Intelligence"
+          title="AI Assistant"
+          description="Draft task copy, summarize threads, and sketch sprint plans."
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => suggest.mutate()}
+              disabled={suggest.isPending}
+            >
+              {suggest.isPending ? 'Thinking…' : 'Suggest next actions'}
             </Button>
-          </form>
-        </TabsContent>
+          }
+        />
 
-        <TabsContent value="summary">
-          <form
-            className="space-y-4"
-            onSubmit={summaryForm.handleSubmit((values) =>
-              generate.mutate({
-                prompt: values.prompt,
-                feature: 'summarize',
-                systemInstruction:
-                  'Summarize the following team content into concise bullets with risks and decisions.',
-              }),
-            )}
-          >
-            <div className="space-y-2">
-              <Label htmlFor="summary-prompt">Content to summarize</Label>
-              <Textarea
-                id="summary-prompt"
-                rows={8}
-                {...summaryForm.register('prompt')}
-              />
-            </div>
-            <Button type="submit" disabled={generate.isPending}>
-              {generate.isPending ? 'Summarizing…' : 'Summarize'}
+        <div className="surface-panel p-4">
+          <Tabs defaultValue="task">
+            <TabsList className="mb-4">
+              <TabsTrigger value="task">Task description</TabsTrigger>
+              <TabsTrigger value="summary">Summarize</TabsTrigger>
+              <TabsTrigger value="sprint">Sprint plan</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="task">
+              <form
+                className="space-y-4"
+                onSubmit={taskForm.handleSubmit((values) =>
+                  generate.mutate({
+                    prompt: values.prompt,
+                    feature: 'task-description',
+                    systemInstruction:
+                      'You are a product engineer. Expand the brief into a clear task description with acceptance criteria and technical notes.',
+                  }),
+                )}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="task-prompt">Brief</Label>
+                  <Textarea
+                    id="task-prompt"
+                    rows={5}
+                    placeholder="Add OAuth login for Google…"
+                    {...taskForm.register('prompt')}
+                  />
+                </div>
+                <Button type="submit" disabled={generate.isPending}>
+                  {generate.isPending ? 'Generating…' : 'Generate description'}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="summary">
+              <form
+                className="space-y-4"
+                onSubmit={summaryForm.handleSubmit((values) =>
+                  generate.mutate({
+                    prompt: values.prompt,
+                    feature: 'summarize',
+                    systemInstruction:
+                      'Summarize the following team content into concise bullets with risks and decisions.',
+                  }),
+                )}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="summary-prompt">Content to summarize</Label>
+                  <Textarea id="summary-prompt" rows={8} {...summaryForm.register('prompt')} />
+                </div>
+                <Button type="submit" disabled={generate.isPending}>
+                  {generate.isPending ? 'Summarizing…' : 'Summarize'}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="sprint">
+              <form
+                className="space-y-4"
+                onSubmit={sprintForm.handleSubmit((values) =>
+                  generate.mutate({
+                    prompt: values.prompt,
+                    feature: 'sprint-plan',
+                    systemInstruction:
+                      'Create a realistic 1-2 week sprint plan with goals, backlog items, owners placeholders, and risks.',
+                  }),
+                )}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="sprint-prompt">Goals and constraints</Label>
+                  <Textarea
+                    id="sprint-prompt"
+                    rows={6}
+                    placeholder="Ship billing MVP, 3 engineers, one designer…"
+                    {...sprintForm.register('prompt')}
+                  />
+                </div>
+                <Button type="submit" disabled={generate.isPending}>
+                  {generate.isPending ? 'Planning…' : 'Generate sprint plan'}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="app-title text-base">Output</h2>
+          {output ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => void navigator.clipboard.writeText(output)}
+            >
+              Copy
             </Button>
-          </form>
-        </TabsContent>
-
-        <TabsContent value="sprint">
-          <form
-            className="space-y-4"
-            onSubmit={sprintForm.handleSubmit((values) =>
-              generate.mutate({
-                prompt: values.prompt,
-                feature: 'sprint-plan',
-                systemInstruction:
-                  'Create a realistic 1-2 week sprint plan with goals, backlog items, owners placeholders, and risks.',
-              }),
-            )}
-          >
-            <div className="space-y-2">
-              <Label htmlFor="sprint-prompt">Goals and constraints</Label>
-              <Textarea
-                id="sprint-prompt"
-                rows={6}
-                placeholder="Ship billing MVP, 3 engineers, one designer…"
-                {...sprintForm.register('prompt')}
-              />
-            </div>
-            <Button type="submit" disabled={generate.isPending}>
-              {generate.isPending ? 'Planning…' : 'Generate sprint plan'}
-            </Button>
-          </form>
-        </TabsContent>
-      </Tabs>
-
-      <section className="mt-8">
-        <h2 className="app-title mb-2 text-base">Output</h2>
+          ) : null}
+        </div>
         {output ? (
-          <pre className="surface-panel max-h-[480px] overflow-auto whitespace-pre-wrap p-4 text-sm">
-            {output}
-          </pre>
+          <div className="surface-panel relative min-h-[320px] overflow-hidden p-5">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/10"
+            />
+            <div className="ts-prose-output relative text-foreground/90">{output}</div>
+          </div>
         ) : (
           <EmptyState
             title="No output yet"
-            description="Run one of the AI forms to see results here."
-            className="py-10"
+            description="Run one of the AI forms — results appear here as polished text."
+            className="min-h-[320px] py-10"
           />
         )}
       </section>
