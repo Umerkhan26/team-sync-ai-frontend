@@ -74,6 +74,9 @@ export function LandingPage() {
               <Button size="lg" variant="outline" asChild>
                 <Link to="/login">Sign in</Link>
               </Button>
+              <Button size="lg" variant="ghost" asChild>
+                <Link to="/pricing">View pricing</Link>
+              </Button>
             </div>
             <p className="mt-6 text-xs text-muted-foreground">
               Journey: register → verify → company setup → invite team → first project.

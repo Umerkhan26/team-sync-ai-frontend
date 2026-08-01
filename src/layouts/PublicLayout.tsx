@@ -18,6 +18,9 @@ export function PublicLayout() {
         </Link>
         <div className="flex items-center gap-2">
           <Button variant="ghost" asChild>
+            <Link to="/pricing">Pricing</Link>
+          </Button>
+          <Button variant="ghost" asChild>
             <Link to="/login">Sign in</Link>
           </Button>
           <Button asChild>

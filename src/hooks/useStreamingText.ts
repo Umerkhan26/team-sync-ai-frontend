@@ -7,7 +7,7 @@ export function useStreamingText(fullText: string, active: boolean) {
 
   useEffect(() => {
     if (!active || !fullText) {
-      setDisplayed(fullText)
+      setDisplayed((prev) => (prev === fullText ? prev : fullText))
       prevRef.current = fullText
       return
     }

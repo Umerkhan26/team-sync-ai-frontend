@@ -42,7 +42,7 @@ export function MessageRow({
   return (
     <div
       id={`msg-${message.id}`}
-      className="group relative flex gap-3 rounded-lg px-2.5 py-2 transition ts-row-hover"
+      className="group relative flex min-w-0 gap-3 rounded-lg px-2.5 py-2 transition ts-row-hover"
     >
       <div className="relative mt-0.5 shrink-0">
         <Avatar className="h-9 w-9">
@@ -98,7 +98,7 @@ export function MessageRow({
           </div>
         </div>
         {message.body ? (
-          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground/90">
+          <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">
             {message.body}
           </p>
         ) : null}

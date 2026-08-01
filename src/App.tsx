@@ -32,12 +32,16 @@ import { MeetingsPage } from '@/features/meetings/pages/MeetingsPage'
 import { HelpPage } from '@/features/help/pages/HelpPage'
 import { TemplatesPage } from '@/features/templates/pages/TemplatesPage'
 import { BillingPage } from '@/features/billing/pages/BillingPage'
+import { IntegrationsPage } from '@/features/integrations/pages/IntegrationsPage'
+import { MeetingRoomPage } from '@/features/meetings/pages/MeetingRoomPage'
+import { PricingPage } from '@/pages/PricingPage'
 
 export default function App() {
   return (
     <Routes>
       <Route element={<PublicLayout />}>
         <Route index element={<LandingPage />} />
+        <Route path="pricing" element={<PricingPage />} />
       </Route>
 
       <Route element={<GuestRoute />}>
@@ -69,6 +73,8 @@ export default function App() {
           <Route path="files" element={<FilesPage />} />
           <Route path="teams" element={<TeamsPage />} />
           <Route path="meetings" element={<MeetingsPage />} />
+          <Route path="meetings/:meetingId/room" element={<MeetingRoomPage />} />
+          <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="ai" element={<AiAssistantPage />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="billing" element={<BillingPage />} />

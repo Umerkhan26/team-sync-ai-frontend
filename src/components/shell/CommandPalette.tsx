@@ -23,12 +23,8 @@ import {
 import { useAppDispatch, useAppSelector } from '@/store'
 import { setAiPanelOpen, setCommandOpen } from '@/store/uiSlice'
 import { usePermissions } from '@/hooks/usePermissions'
-import { projectApi } from '@/services/projectApi'
-import { taskApi } from '@/services/taskApi'
-import { documentApi } from '@/services/documentApi'
-import { orgApi } from '@/services/orgApi'
+import { searchApi } from '@/services/searchApi'
 import { cn, getInitials } from '@/utils/cn'
-import type { Membership, User } from '@/types'
 
 export function CommandPalette() {
   const open = useAppSelector((s) => s.ui.commandOpen)
@@ -53,42 +49,15 @@ export function CommandPalette() {
     if (!open) setQuery('')
   }, [open])
 
-  const projectsQuery = useQuery({
-    queryKey: ['projects', orgId, 'cmdk'],
-    queryFn: () => projectApi.list({ limit: 20 }),
-    enabled: Boolean(open && orgId),
+  const useGlobalSearch = query.trim().length >= 2
+
+  const searchQuery = useQuery({
+    queryKey: ['search', orgId, query.trim()],
+    queryFn: () => searchApi.search(query.trim(), 8),
+    enabled: Boolean(open && orgId && useGlobalSearch),
   })
 
-  const tasksQuery = useQuery({
-    queryKey: ['tasks', orgId, 'cmdk'],
-    queryFn: () => taskApi.list({ limit: 20 }),
-    enabled: Boolean(open && orgId),
-  })
-
-  const docsQuery = useQuery({
-    queryKey: ['documents', orgId, 'cmdk'],
-    queryFn: () => documentApi.list({ limit: 20 }),
-    enabled: Boolean(open && orgId),
-  })
-
-  const membersQuery = useQuery({
-    queryKey: ['members', orgId, 'cmdk'],
-    queryFn: () => orgApi.listMembers(orgId!),
-    enabled: Boolean(open && orgId) && can('members:read'),
-  })
-
-  const projects = projectsQuery.data?.data.items ?? []
-  const tasks = tasksQuery.data?.data.items ?? []
-  const docs = docsQuery.data?.data.items ?? []
-  const people = useMemo(() => {
-    const list = membersQuery.data ?? []
-    const seen = new Map<string, User>()
-    for (const m of list as Membership[]) {
-      const u = typeof m.userId === 'object' ? (m.userId as User) : null
-      if (u) seen.set(u.id, u)
-    }
-    return Array.from(seen.values())
-  }, [membersQuery.data])
+  const searchResults = searchQuery.data
 
   const navItems = useMemo(() => {
     const items = [
@@ -199,75 +168,131 @@ export function CommandPalette() {
               ) : null}
             </Command.Group>
 
-            {projects.length ? (
-              <Command.Group heading="Projects" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
-                {projects.map((project) => (
-                  <Command.Item
-                    key={project.id}
-                    value={`project ${project.name} ${project.key}`}
-                    onSelect={() => run(() => navigate(`/app/projects/${project.id}`))}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
-                  >
-                    <FolderKanban className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{project.name}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{project.key}</span>
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            ) : null}
+            {useGlobalSearch && searchResults ? (
+              <>
+                {searchResults.projects.length ? (
+                  <Command.Group heading="Projects" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.projects.map((project) => (
+                      <Command.Item
+                        key={project.id}
+                        value={`search project ${project.name} ${project.key}`}
+                        onSelect={() => run(() => navigate(`/app/projects/${project.id}`))}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{project.name}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">{project.key}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
 
-            {tasks.length ? (
-              <Command.Group heading="Tasks" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
-                {tasks.map((task) => (
-                  <Command.Item
-                    key={task.id}
-                    value={`task ${task.title} ${task.number}`}
-                    onSelect={() => run(() => navigate(`/app/tasks?highlight=${task.id}`))}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
-                  >
-                    <ListTodo className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{task.title}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">#{task.number}</span>
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            ) : null}
+                {searchResults.tasks.length ? (
+                  <Command.Group heading="Tasks" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.tasks.map((task) => (
+                      <Command.Item
+                        key={task.id}
+                        value={`search task ${task.title} ${task.number}`}
+                        onSelect={() => run(() => navigate(`/app/tasks?highlight=${task.id}`))}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <ListTodo className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{task.title}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">#{task.number}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
 
-            {docs.length ? (
-              <Command.Group heading="Documents" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
-                {docs.map((doc) => (
-                  <Command.Item
-                    key={doc.id}
-                    value={`document ${doc.title}`}
-                    onSelect={() => run(() => navigate(`/app/documents/${doc.id}`))}
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
-                  >
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">{doc.title}</span>
-                  </Command.Item>
-                ))}
-              </Command.Group>
-            ) : null}
+                {searchResults.documents.length ? (
+                  <Command.Group heading="Documents" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.documents.map((doc) => (
+                      <Command.Item
+                        key={doc.id}
+                        value={`search document ${doc.title}`}
+                        onSelect={() => run(() => navigate(`/app/documents/${doc.id}`))}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{doc.title}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
 
-            {people.length ? (
-              <Command.Group heading="People" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
-                {people.map((person) => (
-                  <Command.Item
-                    key={person.id}
-                    value={`person ${person.name} ${person.email}`}
-                    onSelect={() =>
-                      run(() => navigate(canManageWorkspace ? '/app/admin' : '/app/teams'))
-                    }
-                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[9px] font-medium">
-                      {getInitials(person.name || person.email)}
-                    </span>
-                    <span className="truncate">{person.name || person.email}</span>
-                    <span className="ml-auto truncate text-xs text-muted-foreground">{person.email}</span>
-                  </Command.Item>
-                ))}
-              </Command.Group>
+                {searchResults.channels.length && can('channels:read') ? (
+                  <Command.Group heading="Channels" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.channels.map((channel) => (
+                      <Command.Item
+                        key={channel.id}
+                        value={`search channel ${channel.name}`}
+                        onSelect={() =>
+                          run(() => navigate(`/app/chat?channelId=${channel.id}`))
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{channel.name}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+
+                {searchResults.meetings.length && can('meetings:read') ? (
+                  <Command.Group heading="Meetings" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.meetings.map((meeting) => (
+                      <Command.Item
+                        key={meeting.id}
+                        value={`search meeting ${meeting.title}`}
+                        onSelect={() => run(() => navigate('/app/meetings'))}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{meeting.title}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+
+                {searchResults.files.length && can('files:read') ? (
+                  <Command.Group heading="Files" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.files.map((file) => (
+                      <Command.Item
+                        key={file.id}
+                        value={`search file ${file.fileName}`}
+                        onSelect={() => run(() => navigate('/app/files'))}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                        <span className="truncate">{file.fileName}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+
+                {searchResults.people.length && can('members:read') ? (
+                  <Command.Group heading="People" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.people.map((person) => (
+                      <Command.Item
+                        key={person.id}
+                        value={`search person ${person.name} ${person.email}`}
+                        onSelect={() =>
+                          run(() => navigate(canManageWorkspace ? '/app/admin' : '/app/teams'))
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[9px] font-medium">
+                          {getInitials(person.name || person.email || 'U')}
+                        </span>
+                        <span className="truncate">{person.name || person.email}</span>
+                        <span className="ml-auto truncate text-xs text-muted-foreground">
+                          {person.email}
+                        </span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+              </>
             ) : null}
           </Command.List>
         </Command>

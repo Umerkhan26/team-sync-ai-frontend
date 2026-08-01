@@ -15,6 +15,7 @@ import {
   List as ListIcon,
   Plus,
   Rows3,
+  GanttChart,
   UserRound,
 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -72,7 +73,7 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
-type ViewMode = 'board' | 'list' | 'calendar' | 'mine' | 'swimlanes'
+type ViewMode = 'board' | 'list' | 'calendar' | 'mine' | 'swimlanes' | 'timeline'
 
 function memberUser(membership: Membership): User | null {
   return typeof membership.userId === 'object' ? (membership.userId as User) : null
@@ -317,6 +318,30 @@ export function TasksPage() {
 
   const monthDays = useMemo(() => getMonthMatrix(calendarAnchor), [calendarAnchor])
 
+  const timelineTasks = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.dueDate)
+        .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime()),
+    [tasks],
+  )
+
+  const timelineRange = useMemo(() => {
+    if (!timelineTasks.length) return null
+    let min = Date.now()
+    let max = Date.now()
+    for (const task of timelineTasks) {
+      const start = task.createdAt ? new Date(task.createdAt).getTime() : Date.now()
+      const end = new Date(task.dueDate!).getTime()
+      if (start < min) min = start
+      if (end > max) max = end
+    }
+    const pad = 3 * 24 * 60 * 60 * 1000
+    const rangeMin = min - pad
+    const rangeMax = max + pad
+    return { min: rangeMin, max: rangeMax, span: rangeMax - rangeMin }
+  }, [timelineTasks])
+
   const moveTask = (taskId: string, status: TaskStatus) => {
     const task = tasks.find((t) => t.id === taskId)
     if (!task || task.status === status) return
@@ -521,6 +546,7 @@ export function TasksPage() {
     { id: 'swimlanes', label: 'By assignee', icon: Rows3 },
     { id: 'list', label: 'List', icon: ListIcon },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+    { id: 'timeline', label: 'Timeline', icon: GanttChart },
     { id: 'mine', label: 'My Tasks', icon: UserRound },
   ]
 
@@ -867,6 +893,64 @@ export function TasksPage() {
                 })}
               </div>
             </div>
+          ) : view === 'timeline' ? (
+            timelineTasks.length === 0 || !timelineRange ? (
+              <EmptyState
+                title="No scheduled tasks"
+                description="Tasks with due dates appear on the timeline."
+              />
+            ) : (
+              <div className="surface-panel overflow-x-auto p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Task</span>
+                  <span>
+                    {new Date(timelineRange.min).toLocaleDateString()} –{' '}
+                    {new Date(timelineRange.max).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="min-w-[640px] space-y-3">
+                  {timelineTasks.map((task) => {
+                    const startMs = task.createdAt
+                      ? new Date(task.createdAt).getTime()
+                      : timelineRange.min
+                    const endMs = new Date(task.dueDate!).getTime()
+                    const left = ((startMs - timelineRange.min) / timelineRange.span) * 100
+                    const width = Math.max(((endMs - startMs) / timelineRange.span) * 100, 1.5)
+                    return (
+                      <div
+                        key={task.id}
+                        className="grid grid-cols-[minmax(140px,180px)_1fr] items-center gap-3"
+                      >
+                        <button
+                          type="button"
+                          className="truncate text-left text-sm font-medium hover:text-primary"
+                          onClick={() => dispatch(setActiveTaskId(task.id))}
+                        >
+                          #{task.number} {task.title}
+                        </button>
+                        <div className="relative h-8 rounded-md bg-muted/40">
+                          <div
+                            className={cn(
+                              'absolute top-1 h-6 rounded-md px-2 text-[10px] font-medium leading-6 text-primary-foreground',
+                              task.status === 'done'
+                                ? 'bg-success'
+                                : isOverdue(task.dueDate)
+                                  ? 'bg-destructive'
+                                  : 'bg-primary',
+                            )}
+                            style={{
+                              left: `${Math.min(Math.max(left, 0), 98)}%`,
+                              width: `${Math.min(width, 100 - left)}%`,
+                            }}
+                            title={`Due ${new Date(task.dueDate!).toLocaleDateString()}`}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
           ) : view === 'swimlanes' ? (
             tasks.length === 0 ? (
               <EmptyState title="No tasks found" description="Try a different project or filter." />

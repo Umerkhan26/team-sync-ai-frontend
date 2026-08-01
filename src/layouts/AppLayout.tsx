@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Moon,
   PanelLeftClose,
+  Plug,
   Plus,
   Search,
   Settings,
@@ -85,6 +86,7 @@ const workspaceNav: NavItem[] = [
 ]
 
 const manageNav: NavItem[] = [
+  { to: '/app/integrations', label: 'Integrations', icon: Plug, permission: 'org:read' },
   { to: '/app/admin', label: 'Admin', icon: Shield, permission: ['members:invite', 'roles:manage', 'org:update', 'audit:read'] },
   { to: '/app/billing', label: 'Billing', icon: CreditCard, permission: 'org:billing' },
   { to: '/app/settings', label: 'Settings', icon: Settings },
@@ -113,9 +115,9 @@ export function AppLayout() {
   const refreshToken = useAppSelector((s) => s.auth.refreshToken)
 
   const notifQuery = useQuery({
-    queryKey: ['notifications', activeOrg?.id, 'badge'],
+    queryKey: ['notifications', activeOrg?.id],
     queryFn: () =>
-      notificationApi.list({ limit: 20, organizationId: activeOrg?.id }),
+      notificationApi.list({ limit: 40, organizationId: activeOrg?.id }),
     enabled: Boolean(activeOrg?.id),
     refetchInterval: 60_000,
   })
@@ -250,7 +252,7 @@ export function AppLayout() {
   )
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[auto_1fr]">
+    <div className="min-h-screen min-w-0 overflow-x-hidden lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
       <aside
         className={cn(
           'ts-sidebar sticky top-0 hidden h-screen flex-col border-r transition-[width] lg:flex',
@@ -299,7 +301,7 @@ export function AppLayout() {
         </div>
       ) : null}
 
-      <div className="ts-content-frame flex min-h-screen flex-col">
+      <div className="ts-content-frame flex min-h-screen min-w-0 flex-col overflow-x-hidden">
         <header className="ts-topbar sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 sm:px-4">
           <Button
             variant="ghost"
@@ -403,7 +405,9 @@ export function AppLayout() {
             >
               <Bell className="h-4 w-4" />
               {unread > 0 ? (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary" />
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+                  {unread > 9 ? '9+' : unread}
+                </span>
               ) : null}
             </Button>
 
@@ -459,7 +463,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="ts-main-canvas mx-auto w-full max-w-[1440px] flex-1 animate-in-fade px-4 py-6 sm:px-6 lg:px-8">
+        <main className="ts-main-canvas mx-auto w-full min-w-0 max-w-[1440px] flex-1 animate-in-fade overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>

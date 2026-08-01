@@ -1,5 +1,11 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from './api'
-import type { Channel, Message } from '@/types'
+import type {
+  Channel,
+  ChannelUnreadSummary,
+  Message,
+  MessageBookmarkEntry,
+  MessagePinEntry,
+} from '@/types'
 
 export const channelApi = {
   list(params?: { page?: number; limit?: number; projectId?: string }) {
@@ -78,5 +84,40 @@ export const channelApi = {
       `/channels/${channelId}/messages/${messageId}/reactions`,
       { emoji },
     )
+  },
+  listPins(channelId: string) {
+    return apiGet<{ items: MessagePinEntry[] }>(`/channels/${channelId}/pins`).then(
+      (r) => r.data.items,
+    )
+  },
+  pinMessage(channelId: string, messageId: string) {
+    return apiPost<{ pin: MessagePinEntry }>(`/channels/${channelId}/messages/${messageId}/pin`)
+  },
+  unpinMessage(channelId: string, messageId: string) {
+    return apiDelete<{ deleted: boolean }>(
+      `/channels/${channelId}/messages/${messageId}/pin`,
+    )
+  },
+  listBookmarks() {
+    return apiGet<{ items: MessageBookmarkEntry[] }>('/channels/bookmarks').then(
+      (r) => r.data.items,
+    )
+  },
+  addBookmark(channelId: string, messageId: string) {
+    return apiPost<{ bookmark: MessageBookmarkEntry }>('/channels/bookmarks', {
+      channelId,
+      messageId,
+    })
+  },
+  removeBookmark(bookmarkId: string) {
+    return apiDelete<{ deleted: boolean }>(`/channels/bookmarks/${bookmarkId}`)
+  },
+  markRead(channelId: string, lastReadAt?: string) {
+    return apiPost<{ state: { lastReadAt: string } }>(`/channels/${channelId}/read`, {
+      lastReadAt,
+    })
+  },
+  unreadSummary() {
+    return apiGet<ChannelUnreadSummary>('/channels/unread-summary').then((r) => r.data)
   },
 }

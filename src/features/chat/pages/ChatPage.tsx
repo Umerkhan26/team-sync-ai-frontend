@@ -41,34 +41,42 @@ import { MessageComposer } from '@/features/chat/components/MessageComposer'
 import { MessageRow } from '@/features/chat/components/MessageRow'
 import { PinnedMessagesStrip } from '@/features/chat/components/PinnedMessagesStrip'
 import { BookmarksPanel } from '@/features/chat/components/BookmarksPanel'
-import {
-  addBookmark,
-  clearUnread,
-  getLastRead,
-  getUnreadCount,
-  incrementUnread,
-  isBookmarked as isMessageBookmarked,
-  isPinned as isMessagePinned,
-  listBookmarks,
-  listPinned,
-  markChannelRead,
-  pinMessage,
-  removeBookmark,
-  setLastRead,
-  shouldCountAsUnread,
-  unpinMessage,
-  type BookmarkEntry,
-  type PinnedEntry,
-} from '@/features/chat/utils/chatStorage'
+import type { BookmarkEntry, PinnedEntry } from '@/features/chat/utils/chatStorage'
 import { PresenceDot } from '@/components/shared/PresenceDot'
-import { usePresence } from '@/hooks/usePresence'
 import { authApi } from '@/services/authApi'
 import { setUser } from '@/store/authSlice'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
+import { usePresence } from '@/hooks/usePresence'
 import { getErrorMessage, getInitials, cn } from '@/utils/cn'
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/types'
-import type { Channel, Membership, Message, MessageAttachment, User } from '@/types'
+import type { Channel, Membership, Message, MessageAttachment, MessageBookmarkEntry, MessagePinEntry, User } from '@/types'
+
+function toPinnedEntry(pin: MessagePinEntry): PinnedEntry {
+  return {
+    messageId: pin.messageId,
+    pinnedAt: pin.pinnedAt || new Date().toISOString(),
+    body: pin.body,
+    authorName: pin.authorName,
+    createdAt: pin.createdAt,
+  }
+}
+
+function toBookmarkEntry(
+  bookmark: MessageBookmarkEntry,
+  channelLabel?: string,
+): BookmarkEntry {
+  return {
+    id: bookmark.id,
+    messageId: bookmark.messageId,
+    channelId: bookmark.channelId,
+    channelLabel: bookmark.channelLabel || channelLabel || bookmark.channelId,
+    body: bookmark.body,
+    authorName: bookmark.authorName,
+    messageCreatedAt: bookmark.messageCreatedAt,
+    savedAt: bookmark.savedAt || new Date().toISOString(),
+  }
+}
 
 const channelSchema = z.object({
   name: z.string().min(1).max(80),
@@ -98,9 +106,6 @@ export function ChatPage() {
   const [search, setSearch] = useState('')
   const [messageSearch, setMessageSearch] = useState('')
   const [bookmarksOpen, setBookmarksOpen] = useState(false)
-  const [pinnedEntries, setPinnedEntries] = useState<PinnedEntry[]>([])
-  const [bookmarks, setBookmarks] = useState<BookmarkEntry[]>([])
-  const [unreadVersion, setUnreadVersion] = useState(0)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const currentUser = useAppSelector((s) => s.auth.user)
   const dispatch = useAppDispatch()
@@ -125,6 +130,19 @@ export function ChatPage() {
   const members = membersQuery.data ?? []
   const channelIdFromUrl = searchParams.get('channelId')
 
+  const unreadSummaryQuery = useQuery({
+    queryKey: ['channels', 'unread-summary', orgId],
+    queryFn: () => channelApi.unreadSummary(),
+    enabled: Boolean(orgId),
+    refetchInterval: 60_000,
+  })
+
+  const bookmarksQuery = useQuery({
+    queryKey: ['channels', 'bookmarks', orgId],
+    queryFn: () => channelApi.listBookmarks(),
+    enabled: Boolean(orgId),
+  })
+
   // URL is the single source of truth — avoids setState ↔ searchParams loops
   // that were refetching messages on every navigation tick.
   const selectedId = useMemo(() => {
@@ -134,10 +152,17 @@ export function ChatPage() {
     return channels[0]?.id ?? null
   }, [channelIdFromUrl, channels])
 
+  const pinsQuery = useQuery({
+    queryKey: ['channels', 'pins', orgId, selectedId],
+    queryFn: () => channelApi.listPins(selectedId!),
+    enabled: Boolean(orgId && selectedId),
+  })
+
   const selectChannel = useCallback(
     (id: string) => {
-      clearUnread(id)
-      setUnreadVersion((v) => v + 1)
+      void channelApi.markRead(id).then(() => {
+        void queryClient.invalidateQueries({ queryKey: ['channels', 'unread-summary', orgId] })
+      })
       setSearchParams(
         (prev) => {
           if (prev.get('channelId') === id) return prev
@@ -148,7 +173,7 @@ export function ChatPage() {
         { replace: true },
       )
     },
-    [setSearchParams],
+    [setSearchParams, queryClient, orgId],
   )
 
   useEffect(() => {
@@ -206,21 +231,65 @@ export function ChatPage() {
     setMessageSearch('')
   }, [selectedId])
 
-  useEffect(() => {
-    if (!selectedId) {
-      setPinnedEntries([])
-      return
-    }
-    setPinnedEntries(listPinned(selectedId))
-  }, [selectedId])
+  const pinnedEntries = useMemo(
+    () => (pinsQuery.data ?? []).map(toPinnedEntry),
+    [pinsQuery.data],
+  )
 
-  useEffect(() => {
-    if (!orgId) {
-      setBookmarks([])
-      return
+  const pinnedIds = useMemo(
+    () => new Set(pinnedEntries.map((p) => p.messageId)),
+    [pinnedEntries],
+  )
+
+  const bookmarks = useMemo(() => {
+    const labelFor = (channelId: string) => {
+      const channel = channels.find((c) => c.id === channelId)
+      return channel ? channelTitle(channel) : channelId
     }
-    setBookmarks(listBookmarks(orgId))
-  }, [orgId, bookmarksOpen])
+    return (bookmarksQuery.data ?? []).map((b) => toBookmarkEntry(b, labelFor(b.channelId)))
+  }, [bookmarksQuery.data, channels, members, currentUser?.id])
+
+  const bookmarkedKeys = useMemo(
+    () => new Set(bookmarks.map((b) => `${b.channelId}:${b.messageId}`)),
+    [bookmarks],
+  )
+
+  const pinMutation = useMutation({
+    mutationFn: (messageId: string) => channelApi.pinMessage(selectedId!, messageId),
+    onSuccess: async () => {
+      toast.success('Message pinned')
+      await queryClient.invalidateQueries({ queryKey: ['channels', 'pins', orgId, selectedId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const unpinMutation = useMutation({
+    mutationFn: (messageId: string) => channelApi.unpinMessage(selectedId!, messageId),
+    onSuccess: async () => {
+      toast.success('Message unpinned')
+      await queryClient.invalidateQueries({ queryKey: ['channels', 'pins', orgId, selectedId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const addBookmarkMutation = useMutation({
+    mutationFn: ({ channelId, messageId }: { channelId: string; messageId: string }) =>
+      channelApi.addBookmark(channelId, messageId),
+    onSuccess: async () => {
+      toast.success('Message saved to bookmarks')
+      await queryClient.invalidateQueries({ queryKey: ['channels', 'bookmarks', orgId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const removeBookmarkMutation = useMutation({
+    mutationFn: (bookmarkId: string) => channelApi.removeBookmark(bookmarkId),
+    onSuccess: async () => {
+      toast.success('Bookmark removed')
+      await queryClient.invalidateQueries({ queryKey: ['channels', 'bookmarks', orgId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
 
   const selected = channels.find((c) => c.id === selectedId) || null
   const mutedIds = currentUser?.notificationPreferences?.mutedChannelIds || []
@@ -426,19 +495,35 @@ export function ChatPage() {
     typingStopTimer.current = setTimeout(() => emitTypingStop(selectedId), 2500)
   }
 
-  const messages = [...(messagesQuery.data?.data.items ?? [])].reverse()
+  const rawMessages = messagesQuery.data?.data.items
+  const messages = useMemo(
+    () => [...(rawMessages ?? [])].reverse(),
+    [rawMessages],
+  )
   const messageQuery = messageSearch.trim().toLowerCase()
   const displayedMessages = messageQuery
     ? messages.filter((m) => (m.body || '').toLowerCase().includes(messageQuery))
     : messages
-  const threadMessages = [...(threadQuery.data?.data.items ?? [])].reverse()
+  const rawThread = threadQuery.data?.data.items
+  const threadMessages = useMemo(
+    () => [...(rawThread ?? [])].reverse(),
+    [rawThread],
+  )
   const messagesById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
 
   useEffect(() => {
-    if (!selectedId || messagesQuery.isLoading) return
-    markChannelRead(selectedId, messages)
-    setUnreadVersion((v) => v + 1)
-  }, [selectedId, messages, messagesQuery.isLoading])
+    if (!selectedId || messagesQuery.isLoading || !rawMessages?.length) return
+    const latest = rawMessages.reduce((max, m) => {
+      if (!m.createdAt) return max
+      const t = new Date(m.createdAt).getTime()
+      return t > max ? t : max
+    }, 0)
+    void channelApi
+      .markRead(selectedId, latest ? new Date(latest).toISOString() : undefined)
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: ['channels', 'unread-summary', orgId] })
+      })
+  }, [selectedId, rawMessages, messagesQuery.isLoading, orgId, queryClient])
 
   useEffect(() => {
     if (!orgId) return
@@ -447,81 +532,52 @@ export function ChatPage() {
 
     const onNewMessage = (message: Message) => {
       const channelId = String(message.channelId)
-      if (channelId === selectedId) {
-        if (message.createdAt) setLastRead(channelId, message.createdAt)
-        return
-      }
-      if (shouldCountAsUnread(channelId, message.createdAt)) {
-        incrementUnread(channelId)
-        setUnreadVersion((v) => v + 1)
-      }
+      if (channelId === selectedId) return
+      void queryClient.invalidateQueries({ queryKey: ['channels', 'unread-summary', orgId] })
     }
 
     socket.on('message:new', onNewMessage)
     return () => {
       socket.off('message:new', onNewMessage)
     }
-  }, [orgId, selectedId])
+  }, [orgId, selectedId, queryClient])
 
   const unreadByChannel = useMemo(() => {
-    void unreadVersion
+    const counts = unreadSummaryQuery.data?.counts ?? {}
     const map = new Map<string, number>()
     for (const channel of channels) {
       if (channel.id === selectedId) continue
-      const count = getUnreadCount(channel.id)
-      if (count > 0) {
-        map.set(channel.id, count)
-      } else if (!getLastRead(channel.id)) {
-        // Never opened this channel — show a simple unread badge
-        map.set(channel.id, 1)
-      }
+      const count = counts[channel.id]
+      if (count && count > 0) map.set(channel.id, count)
     }
     return map
-  }, [channels, unreadVersion, selectedId])
+  }, [channels, selectedId, unreadSummaryQuery.data])
 
   const handlePin = (message: Message) => {
     if (!selectedId) return
-    const author = authorOf(message)
-    setPinnedEntries(pinMessage(selectedId, message, author?.name || author?.email))
-    toast.success('Message pinned')
+    pinMutation.mutate(message.id)
   }
 
   const handleUnpin = (messageId: string) => {
     if (!selectedId) return
-    setPinnedEntries(unpinMessage(selectedId, messageId))
-    toast.success('Message unpinned')
+    unpinMutation.mutate(messageId)
   }
 
   const handleBookmark = (message: Message) => {
-    if (!orgId || !selected) return
-    const author = authorOf(message)
-    setBookmarks(
-      addBookmark(orgId, {
-        messageId: message.id,
-        channelId: selected.id,
-        channelLabel: channelTitle(selected),
-        body: message.body,
-        authorName: author?.name || author?.email,
-        messageCreatedAt: message.createdAt,
-      }),
-    )
-    toast.success('Message saved to bookmarks')
+    if (!selected) return
+    addBookmarkMutation.mutate({ channelId: selected.id, messageId: message.id })
   }
 
   const handleRemoveBookmark = (message: Message) => {
-    if (!orgId) return
     const entry = bookmarks.find(
       (b) => b.messageId === message.id && b.channelId === message.channelId,
     )
     if (!entry) return
-    setBookmarks(removeBookmark(orgId, entry.id))
-    toast.success('Bookmark removed')
+    removeBookmarkMutation.mutate(entry.id)
   }
 
   const handleRemoveBookmarkById = (id: string) => {
-    if (!orgId) return
-    setBookmarks(removeBookmark(orgId, id))
-    toast.success('Bookmark removed')
+    removeBookmarkMutation.mutate(id)
   }
 
   const jumpToMessage = (messageId: string) => {
@@ -529,8 +585,6 @@ export function ChatPage() {
   }
 
   const goToBookmark = (channelId: string, messageId: string) => {
-    clearUnread(channelId)
-    setUnreadVersion((v) => v + 1)
     selectChannel(channelId)
     window.setTimeout(() => jumpToMessage(messageId), 400)
   }
@@ -543,7 +597,7 @@ export function ChatPage() {
     .filter(Boolean)
 
   return (
-    <div>
+    <div className="w-full min-w-0 max-w-full overflow-x-hidden">
       <PageHeader
         eyebrow="Collaboration"
         title="Chat"
@@ -573,11 +627,14 @@ export function ChatPage() {
       ) : (
         <div
           className={cn(
-            'ts-chat-shell grid',
-            activeThreadId ? 'lg:grid-cols-[260px_1fr_340px]' : 'lg:grid-cols-[260px_1fr]',
+            'ts-chat-shell grid w-full min-w-0',
+            // minmax(0,1fr) lets the message column shrink when the thread opens (Slack-style)
+            activeThreadId
+              ? 'lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,320px)]'
+              : 'lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]',
           )}
         >
-          <aside className="flex max-h-[70vh] flex-col border-b border-border/80 lg:max-h-none lg:border-b-0 lg:border-r">
+          <aside className="flex min-h-0 min-w-0 max-h-[40vh] flex-col overflow-hidden border-b border-border/80 lg:max-h-none lg:border-b-0 lg:border-r">
             <div className="border-b border-border/70 p-2.5">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -636,7 +693,7 @@ export function ChatPage() {
             </div>
           </aside>
 
-          <section className="flex min-h-[420px] flex-col">
+          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden">
             {!selected ? (
               <EmptyState
                 className="m-4 border-0 bg-transparent"
@@ -648,9 +705,9 @@ export function ChatPage() {
               />
             ) : (
               <>
-                <div className="flex items-start justify-between gap-3 border-b border-border/70 px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 border-b border-border/70 px-3 py-3 sm:px-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       {selected.type === 'direct' ? (
                         <div className="relative shrink-0">
                           <Avatar className="h-5 w-5">
@@ -673,11 +730,11 @@ export function ChatPage() {
                         {channelTitle(selected)}
                       </h2>
                       {selected.type === 'private' ? (
-                        <span className="hidden shrink-0 rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-block">
+                        <span className="hidden shrink-0 rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground xl:inline-block">
                           {selected.memberIds?.length ?? 0} members
                         </span>
                       ) : selected.type === 'public' ? (
-                        <span className="hidden shrink-0 rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-block">
+                        <span className="hidden shrink-0 rounded-full border border-border bg-secondary/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground xl:inline-block">
                           Everyone
                         </span>
                       ) : null}
@@ -687,23 +744,23 @@ export function ChatPage() {
                         {selected.description}
                       </p>
                     ) : selected.type === 'private' ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         Only invited members can see this channel
                       </p>
                     ) : selected.type === 'public' ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         Anyone in the organization can post here
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div className="relative hidden sm:block">
+                  <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+                    <div className="relative hidden md:block">
                       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       <input
                         value={messageSearch}
                         onChange={(e) => setMessageSearch(e.target.value)}
                         placeholder="Search messages"
-                        className="h-8 w-44 rounded-md border border-border bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-ring/30 lg:w-56"
+                        className="h-8 w-36 rounded-md border border-border bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-ring/30 xl:w-48"
                       />
                     </div>
                     <Button
@@ -713,7 +770,7 @@ export function ChatPage() {
                       className="relative"
                     >
                       <Bookmark className="h-3.5 w-3.5" />
-                      Bookmarks
+                      <span className="hidden sm:inline">Bookmarks</span>
                       {bookmarks.length > 0 ? (
                         <span className="ml-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
                           {bookmarks.length > 99 ? '99+' : bookmarks.length}
@@ -734,7 +791,7 @@ export function ChatPage() {
                           }}
                         >
                           <UserPlus className="h-3.5 w-3.5" />
-                          Add people
+                          <span className="hidden lg:inline">Add people</span>
                         </Button>
                         <Button
                           size="sm"
@@ -750,7 +807,7 @@ export function ChatPage() {
                   </div>
                 </div>
 
-                <div className="ts-scrollbar flex-1 space-y-0.5 overflow-y-auto px-2.5 py-4">
+                <div className="ts-scrollbar min-h-0 min-w-0 flex-1 space-y-0.5 overflow-x-hidden overflow-y-auto px-2.5 py-4">
                   {messagesQuery.isLoading ? (
                     <LoadingState rows={4} />
                   ) : messagesQuery.isError ? (
@@ -802,12 +859,8 @@ export function ChatPage() {
                               toggleReaction.mutate({ messageId: msg.id, emoji })
                             }
                             onOpenThread={() => setActiveThreadId(msg.id)}
-                            isPinned={selectedId ? isMessagePinned(selectedId, msg.id) : false}
-                            isBookmarked={
-                              orgId && selectedId
-                                ? isMessageBookmarked(orgId, msg.id, selectedId)
-                                : false
-                            }
+                            isPinned={pinnedIds.has(msg.id)}
+                            isBookmarked={bookmarkedKeys.has(`${selectedId}:${msg.id}`)}
                             onPin={() => handlePin(msg)}
                             onUnpin={() => handleUnpin(msg.id)}
                             onBookmark={() => handleBookmark(msg)}
@@ -837,8 +890,8 @@ export function ChatPage() {
           </section>
 
           {activeThreadId ? (
-            <aside className="flex max-h-[70vh] flex-col border-t border-border lg:max-h-none lg:border-l lg:border-t-0">
-              <div className="flex items-center justify-between border-b border-border/70 px-3 py-3">
+            <aside className="flex min-h-0 min-w-0 max-h-[50vh] flex-col overflow-hidden border-t border-border bg-[color:var(--ts-elevated)] lg:max-h-none lg:border-l lg:border-t-0">
+              <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-3 py-3">
                 <h3 className="text-[13px] font-semibold text-foreground">Thread</h3>
                 <Button
                   variant="ghost"
@@ -849,7 +902,7 @@ export function ChatPage() {
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="ts-scrollbar flex-1 overflow-y-auto px-2 py-3">
+              <div className="ts-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-2 py-3">
                 {threadParent ? (
                   <div className="mb-2 border-b border-border/70 pb-2">
                     <MessageRow

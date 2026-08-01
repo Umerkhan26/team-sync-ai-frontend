@@ -23,7 +23,7 @@ export function PageHeader({
         className,
       )}
     >
-      <div className="space-y-1.5">
+      <div className="min-w-0 space-y-1.5">
         {eyebrow ? (
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
             {eyebrow}
@@ -39,7 +39,7 @@ export function PageHeader({
         ) : null}
       </div>
       {actions ? (
-        <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>
+        <div className="flex max-w-full flex-wrap items-center gap-2 shrink-0">{actions}</div>
       ) : null}
     </div>
   )

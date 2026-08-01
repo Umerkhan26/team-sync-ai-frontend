@@ -458,9 +458,9 @@ export function DashboardPage() {
             </p>
           ) : (
             <ul className="divide-y divide-border overflow-hidden rounded-md border border-border/60">
-              {focusForToday.map((task) => (
+              {focusForToday.map((task, index) => (
                 <li
-                  key={task.id}
+                  key={task.id || `focus-${task.number ?? index}`}
                   className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/40"
                 >
                   <div className="min-w-0">
@@ -538,8 +538,8 @@ export function DashboardPage() {
             <p className="text-sm text-muted-foreground">No files uploaded yet.</p>
           ) : (
             <ul className="divide-y divide-border overflow-hidden rounded-md border border-border/60">
-              {recentFiles.map((file) => (
-                <li key={file.id}>
+              {recentFiles.map((file, index) => (
+                <li key={file.id || `${file.fileName}-${index}`}>
                   <a
                     href={file.secureUrl || file.url}
                     target="_blank"
@@ -622,7 +622,7 @@ export function DashboardPage() {
                       : null
                   const name = person?.name || 'Member'
                   return (
-                    <li key={membership.id} className="flex items-center gap-2.5">
+                    <li key={membership.id || person?.id || person?.email || name} className="flex items-center gap-2.5">
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={person?.avatarUrl || undefined} alt="" />
                         <AvatarFallback className="text-[10px]">{getInitials(name)}</AvatarFallback>
@@ -712,9 +712,9 @@ export function DashboardPage() {
             />
           ) : (
             <ul className="surface-panel divide-y divide-border overflow-hidden">
-              {focusTasks.map((task) => (
+              {focusTasks.map((task, index) => (
                 <li
-                  key={task.id}
+                  key={task.id || `task-${task.number ?? index}`}
                   className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-accent/40"
                 >
                   <div className="min-w-0">
@@ -753,8 +753,8 @@ export function DashboardPage() {
                 </div>
               ) : (
                 <ul className="surface-panel divide-y divide-border overflow-hidden">
-                  {docs.map((doc) => (
-                    <li key={doc.id}>
+                  {docs.map((doc, index) => (
+                    <li key={doc.id || `doc-${index}`}>
                       <Link
                         to={`/app/documents/${doc.id}`}
                         className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-accent/40"
@@ -805,7 +805,7 @@ export function DashboardPage() {
             />
           ) : (
             <ul className="surface-panel divide-y divide-border overflow-hidden">
-              {projects.map((project) => {
+              {projects.map((project, index) => {
                 const projectTasks = tasks.filter((t) => t.projectId === project.id)
                 const open = projectTasks.filter(
                   (t) => t.status !== 'done' && t.status !== 'cancelled',
@@ -813,7 +813,7 @@ export function DashboardPage() {
                 const done = projectTasks.filter((t) => t.status === 'done').length
                 const total = Math.max(1, open + done)
                 return (
-                  <li key={project.id}>
+                  <li key={project.id || `project-${index}`}>
                     <Link
                       to={`/app/projects/${project.id}`}
                       className={cn(
@@ -855,9 +855,9 @@ export function DashboardPage() {
                 </div>
               ) : (
                 <ul className="surface-panel divide-y divide-border overflow-hidden">
-                  {teams.slice(0, 4).map((team) => (
+                  {teams.slice(0, 4).map((team, index) => (
                     <li
-                      key={team.id}
+                      key={team.id || `team-${index}`}
                       className="flex items-center justify-between gap-3 px-3.5 py-2.5"
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
@@ -892,9 +892,9 @@ export function DashboardPage() {
                 </div>
               ) : (
                 <ul className="surface-panel divide-y divide-border overflow-hidden">
-                  {upcomingMeetings.map((meeting) => (
+                  {upcomingMeetings.map((meeting, index) => (
                     <li
-                      key={meeting.id}
+                      key={meeting.id || `meeting-${index}`}
                       className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-accent/40"
                     >
                       <div className="min-w-0">
@@ -925,9 +925,9 @@ export function DashboardPage() {
                 </div>
               ) : (
                 <ul className="surface-panel divide-y divide-border overflow-hidden">
-                  {auditQuery.data!.data.items.map((log) => (
+                  {auditQuery.data!.data.items.map((log, index) => (
                     <li
-                      key={log.id}
+                      key={log.id || `${log.action}-${log.createdAt}-${index}`}
                       className="flex items-center justify-between gap-3 px-3.5 py-2.5 transition-colors hover:bg-accent/40"
                     >
                       <div className="min-w-0">

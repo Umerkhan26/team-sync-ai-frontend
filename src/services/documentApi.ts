@@ -1,5 +1,5 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from './api'
-import type { DocumentItem, DocumentVersion } from '@/types'
+import type { DocumentComment, DocumentItem, DocumentVersion } from '@/types'
 
 export const documentApi = {
   list(params?: { page?: number; limit?: number; projectId?: string; q?: string }) {
@@ -42,6 +42,27 @@ export const documentApi = {
   restoreVersion(documentId: string, versionId: string) {
     return apiPost<{ document: DocumentItem }>(
       `/documents/${documentId}/versions/${versionId}/restore`,
+    )
+  },
+  listComments(documentId: string) {
+    return apiGet<{ items: DocumentComment[] }>(`/documents/${documentId}/comments`).then(
+      (r) => r.data.items,
+    )
+  },
+  addComment(
+    documentId: string,
+    body: string,
+    options?: { mentionIds?: string[]; parentCommentId?: string | null },
+  ) {
+    return apiPost<{ comment: DocumentComment }>(`/documents/${documentId}/comments`, {
+      body,
+      mentionIds: options?.mentionIds,
+      parentCommentId: options?.parentCommentId,
+    })
+  },
+  removeComment(documentId: string, commentId: string) {
+    return apiDelete<{ deleted: boolean }>(
+      `/documents/${documentId}/comments/${commentId}`,
     )
   },
 }

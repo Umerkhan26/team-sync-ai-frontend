@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -461,6 +462,14 @@ export function MeetingsPage() {
                 >
                   <Link2 className="h-3 w-3" /> Join link
                 </a>
+              ) : null}
+              {isUpcoming(meeting) ? (
+                <Button size="sm" variant="secondary" className="h-7 text-[11px]" asChild>
+                  <Link to={`/app/meetings/${meeting.id}/room`}>
+                    <Video className="h-3 w-3" />
+                    Join room
+                  </Link>
+                </Button>
               ) : null}
             </div>
           </div>

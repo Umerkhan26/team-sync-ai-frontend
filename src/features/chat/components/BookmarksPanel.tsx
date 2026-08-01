@@ -34,7 +34,7 @@ export function BookmarksPanel({
             Saved messages
           </SheetTitle>
           <SheetDescription>
-            Bookmarks are stored on this device for quick access.
+            Saved messages synced to your account across devices.
           </SheetDescription>
         </SheetHeader>
         <div className="ts-scrollbar flex-1 overflow-y-auto px-5 pb-6">

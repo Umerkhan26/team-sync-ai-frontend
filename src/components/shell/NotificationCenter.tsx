@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow, isThisWeek, isToday, isYesterday } from 'date-fns'
 import {
@@ -36,10 +37,21 @@ function groupByDay(items: NotificationItem[]) {
   return Array.from(groups.entries())
 }
 
+function destinationFor(item: NotificationItem) {
+  const data = item.data || {}
+  if (data.channelId) return `/app/chat?channelId=${String(data.channelId)}`
+  if (data.taskId) return `/app/tasks?taskId=${String(data.taskId)}`
+  if (data.meetingId) return `/app/meetings`
+  if (data.documentId) return `/app/documents/${String(data.documentId)}`
+  if (item.type.includes('invite')) return '/app/admin'
+  return null
+}
+
 export function NotificationCenter() {
   const open = useAppSelector((s) => s.ui.notificationsOpen)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const dispatch = useAppDispatch()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -49,7 +61,8 @@ export function NotificationCenter() {
         limit: 40,
         organizationId: orgId,
       }),
-    enabled: Boolean(orgId && open),
+    enabled: Boolean(orgId),
+    refetchOnWindowFocus: true,
   })
 
   const items = data?.data.items ?? []
@@ -125,6 +138,9 @@ export function NotificationCenter() {
                           )}
                           onClick={() => {
                             if (!item.readAt) markRead.mutate(item.id)
+                            const dest = destinationFor(item)
+                            dispatch(setNotificationsOpen(false))
+                            if (dest) navigate(dest)
                           }}
                         >
                           <div className="flex items-center gap-2">

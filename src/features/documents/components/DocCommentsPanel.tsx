@@ -1,34 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MessageSquare, Send } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { MessageSquare, Send, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { formatDateTime } from '@/utils/cn'
-import type { User } from '@/types'
+import { documentApi } from '@/services/documentApi'
+import { formatDateTime, getErrorMessage } from '@/utils/cn'
+import type { DocumentComment, User } from '@/types'
+import { toast } from 'sonner'
+import { useAppSelector } from '@/store'
 
-export interface DocComment {
-  id: string
-  body: string
-  createdAt: string
-  author: string
-}
-
-function commentsKey(documentId: string) {
-  return `ts_doc_comments_${documentId}`
-}
-
-export function loadDocComments(documentId: string): DocComment[] {
-  try {
-    const raw = localStorage.getItem(commentsKey(documentId))
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as DocComment[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+function authorName(comment: DocumentComment): string {
+  const author = comment.authorId
+  if (typeof author === 'object' && author) {
+    return author.name || author.email || 'Member'
   }
-}
-
-export function saveDocComments(documentId: string, comments: DocComment[]) {
-  localStorage.setItem(commentsKey(documentId), JSON.stringify(comments))
+  return 'Member'
 }
 
 function renderCommentBody(body: string) {
@@ -50,17 +36,42 @@ interface DocCommentsPanelProps {
   members: User[]
 }
 
-export function DocCommentsPanel({ documentId, currentUserName, members }: DocCommentsPanelProps) {
-  const [comments, setComments] = useState<DocComment[]>(() => loadDocComments(documentId))
+export function DocCommentsPanel({ documentId, members }: DocCommentsPanelProps) {
+  const currentUserId = useAppSelector((s) => s.auth.user?.id)
+  const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    setComments(loadDocComments(documentId))
-    setDraft('')
-    setMentionQuery(null)
-  }, [documentId])
+  const commentsQuery = useQuery({
+    queryKey: ['document-comments', documentId],
+    queryFn: () => documentApi.listComments(documentId),
+    enabled: Boolean(documentId),
+  })
+
+  const comments = useMemo(
+    () => [...(commentsQuery.data ?? [])].reverse(),
+    [commentsQuery.data],
+  )
+
+  const addMutation = useMutation({
+    mutationFn: (input: { body: string; mentionIds: string[] }) =>
+      documentApi.addComment(documentId, input.body, { mentionIds: input.mentionIds }),
+    onSuccess: async () => {
+      setDraft('')
+      setMentionQuery(null)
+      await queryClient.invalidateQueries({ queryKey: ['document-comments', documentId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (commentId: string) => documentApi.removeComment(documentId, commentId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['document-comments', documentId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
 
   const mentionCandidates = useMemo(() => {
     if (mentionQuery === null) return []
@@ -96,20 +107,19 @@ export function DocCommentsPanel({ documentId, currentUserName, members }: DocCo
     })
   }
 
+  const resolveMentionIds = (body: string): string[] => {
+    const ids = new Set<string>()
+    for (const member of members) {
+      const name = member.name || member.email.split('@')[0]!
+      if (body.includes(`@${name}`)) ids.add(member.id)
+    }
+    return [...ids]
+  }
+
   const addComment = () => {
     const body = draft.trim()
     if (!body) return
-    const next: DocComment = {
-      id: crypto.randomUUID(),
-      body,
-      createdAt: new Date().toISOString(),
-      author: currentUserName,
-    }
-    const updated = [next, ...comments]
-    setComments(updated)
-    saveDocComments(documentId, updated)
-    setDraft('')
-    setMentionQuery(null)
+    addMutation.mutate({ body, mentionIds: resolveMentionIds(body) })
   }
 
   return (
@@ -154,30 +164,58 @@ export function DocCommentsPanel({ documentId, currentUserName, members }: DocCo
             ))}
           </ul>
         ) : null}
-        <Button size="sm" className="w-full gap-1.5" disabled={!draft.trim()} onClick={addComment}>
+        <Button
+          size="sm"
+          className="w-full gap-1.5"
+          disabled={!draft.trim() || addMutation.isPending}
+          onClick={addComment}
+        >
           <Send className="h-3.5 w-3.5" />
           Comment
         </Button>
       </div>
 
-      {comments.length === 0 ? (
+      {commentsQuery.isLoading ? (
+        <p className="text-xs text-muted-foreground">Loading comments…</p>
+      ) : comments.length === 0 ? (
         <p className="text-xs text-muted-foreground">No comments yet. Start the discussion.</p>
       ) : (
         <ul className="max-h-[420px] space-y-2 overflow-y-auto">
-          {comments.map((comment) => (
-            <li
-              key={comment.id}
-              className="rounded-md border border-border px-2.5 py-2 text-xs"
-            >
-              <div className="mb-1 flex items-baseline justify-between gap-2">
-                <span className="font-medium">{comment.author}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">
-                  {formatDateTime(comment.createdAt)}
-                </span>
-              </div>
-              <p className="whitespace-pre-wrap leading-relaxed">{renderCommentBody(comment.body)}</p>
-            </li>
-          ))}
+          {comments.map((comment) => {
+            const authorId =
+              typeof comment.authorId === 'object' ? comment.authorId?.id : comment.authorId
+            const canDelete = Boolean(currentUserId && authorId === currentUserId)
+            return (
+              <li
+                key={comment.id}
+                className="rounded-md border border-border px-2.5 py-2 text-xs"
+              >
+                <div className="mb-1 flex items-baseline justify-between gap-2">
+                  <span className="font-medium">{authorName(comment)}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {comment.createdAt ? formatDateTime(comment.createdAt) : ''}
+                    </span>
+                    {canDelete ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-6 w-6"
+                        aria-label="Delete comment"
+                        onClick={() => removeMutation.mutate(comment.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="whitespace-pre-wrap leading-relaxed">
+                  {renderCommentBody(comment.body)}
+                </p>
+              </li>
+            )
+          })}
         </ul>
       )}
     </aside>

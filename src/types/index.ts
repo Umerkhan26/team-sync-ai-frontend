@@ -173,11 +173,106 @@ export interface Meeting {
   notes?: string
   projectId?: string | null
   joinUrl?: string | null
+  roomId?: string | null
   aiSummary?: string | null
   actionItemIds?: string[]
   createdBy?: string
   createdAt?: string
   updatedAt?: string
+}
+
+export interface MessagePinEntry {
+  id: string
+  channelId: string
+  messageId: string
+  pinnedAt?: string
+  body?: string
+  authorName?: string
+  createdAt?: string
+  message?: Message | null
+}
+
+export interface MessageBookmarkEntry {
+  id: string
+  messageId: string
+  channelId: string
+  channelLabel?: string
+  body: string
+  authorName?: string
+  messageCreatedAt?: string
+  savedAt?: string
+}
+
+export interface ChannelUnreadSummary {
+  counts: Record<string, number>
+}
+
+export interface DocumentComment {
+  id: string
+  documentId: string
+  body: string
+  authorId?: string | User
+  mentionIds?: string[]
+  parentCommentId?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type TemplateKind = 'project' | 'task' | 'document' | 'meeting'
+
+export interface WorkspaceTemplate {
+  id: string
+  organizationId: string
+  kind: TemplateKind
+  name: string
+  description?: string
+  payload?: Record<string, unknown>
+  createdBy?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type IntegrationProvider =
+  | 'slack'
+  | 'github'
+  | 'gitlab'
+  | 'jira'
+  | 'linear'
+  | 'google_calendar'
+  | 'notion'
+  | 'zapier'
+  | 'webhook'
+
+export type IntegrationStatus = 'connected' | 'disconnected' | 'error' | 'pending'
+
+export interface IntegrationCatalogItem {
+  provider: IntegrationProvider
+  name: string
+  description: string
+  category: string
+}
+
+export interface IntegrationConnection {
+  id: string
+  organizationId: string
+  provider: IntegrationProvider
+  status: IntegrationStatus
+  displayName?: string
+  config?: Record<string, unknown>
+  connectedBy?: string | null
+  lastSyncedAt?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface SearchResults {
+  projects: Array<{ id: string; name: string; key?: string; status?: string }>
+  tasks: Array<{ id: string; title: string; status?: string; priority?: string; number?: number; projectId?: string }>
+  documents: Array<{ id: string; title: string; updatedAt?: string }>
+  channels: Array<{ id: string; name: string; type?: string; slug?: string }>
+  meetings: Array<{ id: string; title: string; startsAt?: string; endsAt?: string }>
+  files: Array<{ id: string; fileName: string; mimeType?: string; secureUrl?: string; url?: string }>
+  people: Array<{ id: string; name?: string; email?: string; avatarUrl?: string; membershipId?: string }>
 }
 
 export interface AuditLog {

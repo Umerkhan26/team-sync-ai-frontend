@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, FileText, FolderKanban, ListTodo, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
+import { ErrorState } from '@/components/shared/ErrorState'
+import { LoadingState } from '@/components/shared/LoadingState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,12 +30,9 @@ import {
 } from '@/components/ui/select'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
-import {
-  deleteCustomTemplate,
-  listCustomTemplates,
-  saveCustomTemplate,
-  type CustomTemplate,
-} from '@/utils/templateStorage'
+import { templateApi } from '@/services/templateApi'
+import { getErrorMessage } from '@/utils/cn'
+import type { WorkspaceTemplate } from '@/types'
 
 type TemplateKind = 'project' | 'task' | 'document'
 
@@ -142,24 +142,62 @@ const EMPTY_FORM = {
   tags: '',
 }
 
-function customToEntry(t: CustomTemplate): TemplateEntry {
-  return { ...t, custom: true }
+function apiTemplateToEntry(t: WorkspaceTemplate): TemplateEntry {
+  const kind = (t.kind === 'meeting' ? 'document' : t.kind) as TemplateKind
+  const payload = (t.payload || {}) as Record<string, string>
+  const params: Record<string, string> =
+    kind === 'project'
+      ? { name: payload.name || t.name, description: payload.description || t.description || '' }
+      : kind === 'task'
+        ? {
+            title: payload.title || t.name,
+            description: payload.description || t.description || '',
+            priority: payload.priority || 'medium',
+          }
+        : { title: payload.title || t.name }
+
+  return {
+    id: t.id,
+    kind,
+    title: t.name,
+    description: t.description || '',
+    tags: Array.isArray(payload.tags) ? (payload.tags as string[]) : [],
+    params,
+    custom: true,
+  }
+}
+
+function buildPayload(kind: TemplateKind, title: string, description: string, tags: string[]) {
+  if (kind === 'project') {
+    return { name: title, description, tags }
+  }
+  if (kind === 'task') {
+    return { title, description, priority: 'medium', tags }
+  }
+  return { title, tags }
 }
 
 export function TemplatesPage() {
   const navigate = useNavigate()
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
+  const queryClient = useQueryClient()
   const { can } = usePermissions()
   const [tab, setTab] = useState<'all' | TemplateKind | 'custom'>('all')
-  const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>([])
   const [preview, setPreview] = useState<TemplateEntry | null>(null)
   const [editorOpen, setEditorOpen] = useState(false)
-  const [editing, setEditing] = useState<CustomTemplate | null>(null)
+  const [editing, setEditing] = useState<WorkspaceTemplate | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
 
-  useEffect(() => {
-    if (orgId) setCustomTemplates(listCustomTemplates(orgId))
-  }, [orgId])
+  const customTemplatesQuery = useQuery({
+    queryKey: ['templates', orgId],
+    queryFn: () => templateApi.list(),
+    enabled: Boolean(orgId),
+  })
+
+  const customTemplates = useMemo(
+    () => (customTemplatesQuery.data?.data.items ?? []).filter((t) => t.kind !== 'meeting'),
+    [customTemplatesQuery.data],
+  )
 
   const canUse: Record<TemplateKind, boolean> = {
     project: can('projects:create'),
@@ -168,14 +206,54 @@ export function TemplatesPage() {
   }
 
   const allTemplates = useMemo(() => {
-    const custom = customTemplates.map(customToEntry)
+    const custom = customTemplates.map(apiTemplateToEntry)
     return [...custom, ...TEMPLATES]
   }, [customTemplates])
 
   const visible = useMemo(() => {
-    if (tab === 'custom') return customTemplates.map(customToEntry)
+    if (tab === 'custom') return customTemplates.map(apiTemplateToEntry)
     return allTemplates.filter((t) => tab === 'all' || t.kind === tab)
   }, [tab, allTemplates, customTemplates])
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.title.trim()) throw new Error('Title is required')
+      const tags = form.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+      const payload = buildPayload(form.kind, form.title.trim(), form.description.trim(), tags)
+      if (editing) {
+        return templateApi.update(editing.id, {
+          kind: form.kind,
+          name: form.title.trim(),
+          description: form.description.trim(),
+          payload,
+        })
+      }
+      return templateApi.create({
+        kind: form.kind,
+        name: form.title.trim(),
+        description: form.description.trim(),
+        payload,
+      })
+    },
+    onSuccess: async () => {
+      toast.success(editing ? 'Template updated' : 'Template created')
+      setEditorOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['templates', orgId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => templateApi.remove(id),
+    onSuccess: async () => {
+      toast.success('Template deleted')
+      await queryClient.invalidateQueries({ queryKey: ['templates', orgId] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
 
   const applyTemplate = (template: TemplateEntry) => {
     const meta = KIND_META[template.kind]
@@ -189,13 +267,15 @@ export function TemplatesPage() {
     setEditorOpen(true)
   }
 
-  const openEdit = (template: CustomTemplate) => {
+  const openEdit = (template: WorkspaceTemplate) => {
     setEditing(template)
+    const payload = (template.payload || {}) as Record<string, string>
+    const tags = Array.isArray(payload.tags) ? (payload.tags as string[]).join(', ') : ''
     setForm({
-      kind: template.kind,
-      title: template.title,
-      description: template.description,
-      tags: template.tags.join(', '),
+      kind: template.kind as TemplateKind,
+      title: template.name,
+      description: template.description || '',
+      tags,
     })
     setEditorOpen(true)
   }
@@ -205,34 +285,11 @@ export function TemplatesPage() {
       toast.error('Title is required')
       return
     }
-    const tags = form.tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
-    const params: Record<string, string> =
-      form.kind === 'project'
-        ? { name: form.title, description: form.description }
-        : form.kind === 'task'
-          ? { title: form.title, description: form.description, priority: 'medium' }
-          : { title: form.title }
-
-    const updated = saveCustomTemplate(orgId, {
-      id: editing?.id,
-      kind: form.kind,
-      title: form.title.trim(),
-      description: form.description.trim(),
-      tags,
-      params,
-    })
-    setCustomTemplates(updated)
-    setEditorOpen(false)
-    toast.success(editing ? 'Template updated' : 'Template created')
+    saveMutation.mutate()
   }
 
   const removeTemplate = (id: string) => {
-    if (!orgId) return
-    setCustomTemplates(deleteCustomTemplate(orgId, id))
-    toast.success('Template deleted')
+    removeMutation.mutate(id)
   }
 
   const renderCard = (template: TemplateEntry) => {
@@ -337,7 +394,11 @@ export function TemplatesPage() {
         </TabsList>
 
         <TabsContent value={tab} className="mt-5">
-          {visible.length === 0 ? (
+          {customTemplatesQuery.isLoading && tab === 'custom' ? (
+            <LoadingState rows={3} />
+          ) : customTemplatesQuery.isError && tab === 'custom' ? (
+            <ErrorState onRetry={() => void customTemplatesQuery.refetch()} />
+          ) : visible.length === 0 ? (
             <EmptyState
               title={tab === 'custom' ? 'No custom templates yet' : 'No templates in this category'}
               description={
@@ -411,7 +472,7 @@ export function TemplatesPage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit template' : 'New custom template'}</DialogTitle>
             <DialogDescription>
-              Saved to this workspace in localStorage — syncs when backend templates ship.
+              Saved to this workspace and shared with your organization.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -463,7 +524,9 @@ export function TemplatesPage() {
             <Button variant="outline" onClick={() => setEditorOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={saveForm}>{editing ? 'Save changes' : 'Create template'}</Button>
+            <Button onClick={saveForm} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Saving…' : editing ? 'Save changes' : 'Create template'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
