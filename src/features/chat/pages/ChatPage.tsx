@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Bookmark,
+  FolderKanban,
   Globe2,
   Hash,
   Lock,
@@ -32,18 +33,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { channelApi } from '@/services/channelApi'
 import { orgApi } from '@/services/orgApi'
+import { projectApi } from '@/services/projectApi'
 import { emitTypingStart, emitTypingStop, getSocket } from '@/services/socket'
 import { useChannelRealtime, messagesQueryKey } from '@/features/chat/hooks/useChannelRealtime'
 import { MessageComposer } from '@/features/chat/components/MessageComposer'
 import { MessageRow } from '@/features/chat/components/MessageRow'
+import { CreateTaskFromMessageDialog } from '@/features/chat/components/CreateTaskFromMessageDialog'
 import { PinnedMessagesStrip } from '@/features/chat/components/PinnedMessagesStrip'
 import { BookmarksPanel } from '@/features/chat/components/BookmarksPanel'
 import type { BookmarkEntry, PinnedEntry } from '@/features/chat/utils/chatStorage'
 import { PresenceDot } from '@/components/shared/PresenceDot'
 import { authApi } from '@/services/authApi'
 import { setUser } from '@/store/authSlice'
+import { setActiveTaskId } from '@/store/uiSlice'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
 import { usePresence } from '@/hooks/usePresence'
@@ -77,10 +88,13 @@ function toBookmarkEntry(
   }
 }
 
+const NONE_PROJECT = '__none__'
+
 const channelSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional().or(z.literal('')),
   isPrivate: z.boolean(),
+  projectId: z.string().optional().or(z.literal('')),
 })
 
 type ChannelForm = z.infer<typeof channelSchema>
@@ -105,6 +119,7 @@ export function ChatPage() {
   const [search, setSearch] = useState('')
   const [messageSearch, setMessageSearch] = useState('')
   const [bookmarksOpen, setBookmarksOpen] = useState(false)
+  const [taskFromMessage, setTaskFromMessage] = useState<Message | null>(null)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const currentUser = useAppSelector((s) => s.auth.user)
   const dispatch = useAppDispatch()
@@ -142,6 +157,17 @@ export function ChatPage() {
     queryFn: () => channelApi.listBookmarks(),
     enabled: Boolean(orgId) && can('channels:read'),
   })
+
+  const projectsQuery = useQuery({
+    queryKey: ['projects', orgId, 'channel-link'],
+    queryFn: () => projectApi.list({ limit: 100 }),
+    enabled: Boolean(orgId) && can('channels:read'),
+  })
+
+  const projects = useMemo(
+    () => (projectsQuery.data?.data.items ?? []).filter((p) => p.status !== 'archived'),
+    [projectsQuery.data],
+  )
 
   useEffect(() => {
     const open = searchParams.get('open')
@@ -318,6 +344,9 @@ export function ChatPage() {
   })
 
   const selected = channels.find((c) => c.id === selectedId) || null
+  const linkedProjectName = selected?.projectId
+    ? projects.find((p) => p.id === selected.projectId)?.name
+    : null
   const mutedIds = currentUser?.notificationPreferences?.mutedChannelIds || []
   const isMuted = Boolean(selectedId && mutedIds.includes(selectedId))
   const { typingUsers } = useChannelRealtime(selectedId, activeThreadId)
@@ -357,11 +386,11 @@ export function ChatPage() {
 
   const form = useForm<ChannelForm>({
     resolver: zodResolver(channelSchema),
-    defaultValues: { name: '', description: '', isPrivate: false },
+    defaultValues: { name: '', description: '', isPrivate: false, projectId: '' },
   })
 
   const openChannelDialog = (isPrivate: boolean) => {
-    form.reset({ name: '', description: '', isPrivate })
+    form.reset({ name: '', description: '', isPrivate, projectId: '' })
     setInviteMemberIds([])
     setChannelDialogOpen(true)
   }
@@ -373,6 +402,7 @@ export function ChatPage() {
         description: values.description || undefined,
         type: values.isPrivate ? 'private' : 'public',
         memberIds: values.isPrivate ? inviteMemberIds : undefined,
+        projectId: values.projectId || null,
       }),
     onSuccess: async (result) => {
       toast.success(
@@ -385,6 +415,15 @@ export function ChatPage() {
       form.reset()
       await queryClient.invalidateQueries({ queryKey: ['channels'] })
       selectChannel(result.channel.id)
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const linkProject = useMutation({
+    mutationFn: (projectId: string | null) => channelApi.update(selectedId!, { projectId }),
+    onSuccess: async () => {
+      toast.success('Channel project link updated')
+      await queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
@@ -793,6 +832,12 @@ export function ChatPage() {
                         Anyone in the organization can post here
                       </p>
                     ) : null}
+                    {selected.type !== 'direct' && linkedProjectName ? (
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                        <FolderKanban className="h-3 w-3 shrink-0" />
+                        Task cards from {linkedProjectName}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2">
                     <div className="relative hidden md:block">
@@ -804,6 +849,27 @@ export function ChatPage() {
                         className="h-8 w-36 rounded-md border border-border bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-ring/30 xl:w-48"
                       />
                     </div>
+                    {selected.type !== 'direct' && can('channels:update') ? (
+                      <Select
+                        value={selected.projectId || NONE_PROJECT}
+                        onValueChange={(value) =>
+                          linkProject.mutate(value === NONE_PROJECT ? null : value)
+                        }
+                        disabled={linkProject.isPending}
+                      >
+                        <SelectTrigger className="h-8 w-[10.5rem] text-xs" title="Link project for task cards">
+                          <SelectValue placeholder="Link project" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE_PROJECT}>No project linked</SelectItem>
+                          {projects.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
                     <Button
                       size="sm"
                       variant="outline"
@@ -901,12 +967,16 @@ export function ChatPage() {
                               toggleReaction.mutate({ messageId: msg.id, emoji })
                             }
                             onOpenThread={() => setActiveThreadId(msg.id)}
+                            onOpenTask={(taskId) => dispatch(setActiveTaskId(taskId))}
                             isPinned={pinnedIds.has(msg.id)}
                             isBookmarked={bookmarkedKeys.has(`${selectedId}:${msg.id}`)}
                             onPin={() => handlePin(msg)}
                             onUnpin={() => handleUnpin(msg.id)}
                             onBookmark={() => handleBookmark(msg)}
                             onRemoveBookmark={() => handleRemoveBookmark(msg)}
+                            onCreateTask={
+                              can('tasks:create') ? () => setTaskFromMessage(msg) : undefined
+                            }
                           />
                         ))
                       )}
@@ -959,6 +1029,12 @@ export function ChatPage() {
                       onToggleReaction={(emoji) =>
                         toggleReaction.mutate({ messageId: threadParent.id, emoji })
                       }
+                      onOpenTask={(taskId) => dispatch(setActiveTaskId(taskId))}
+                      onCreateTask={
+                        can('tasks:create')
+                          ? () => setTaskFromMessage(threadParent)
+                          : undefined
+                      }
                       isThreadReply
                     />
                   </div>
@@ -981,6 +1057,10 @@ export function ChatPage() {
                       currentUserId={currentUser?.id}
                       usersById={usersById}
                       onToggleReaction={(emoji) => toggleReaction.mutate({ messageId: msg.id, emoji })}
+                      onOpenTask={(taskId) => dispatch(setActiveTaskId(taskId))}
+                      onCreateTask={
+                        can('tasks:create') ? () => setTaskFromMessage(msg) : undefined
+                      }
                       isThreadReply
                     />
                   ))
@@ -1016,6 +1096,30 @@ export function ChatPage() {
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Input id="description" {...form.register('description')} />
+            </div>
+            <div className="space-y-2">
+              <Label>Link project (task cards)</Label>
+              <Select
+                value={form.watch('projectId') || NONE_PROJECT}
+                onValueChange={(value) =>
+                  form.setValue('projectId', value === NONE_PROJECT ? '' : value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Optional — for task cards" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_PROJECT}>No project</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                When linked, task create/update/status events post Slack-style cards here.
+              </p>
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
@@ -1154,6 +1258,24 @@ export function ChatPage() {
         bookmarks={bookmarks}
         onRemove={handleRemoveBookmarkById}
         onGoTo={goToBookmark}
+      />
+
+      <CreateTaskFromMessageDialog
+        open={Boolean(taskFromMessage)}
+        onOpenChange={(open) => {
+          if (!open) setTaskFromMessage(null)
+        }}
+        message={taskFromMessage}
+        channelId={selectedId || taskFromMessage?.channelId || ''}
+        channelName={
+          selected
+            ? selected.type !== 'direct'
+              ? selected.name
+              : channelTitle(selected)
+            : undefined
+        }
+        defaultProjectId={selected?.projectId}
+        usersById={usersById}
       />
     </div>
   )

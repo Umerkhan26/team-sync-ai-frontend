@@ -35,6 +35,7 @@ export const channelApi = {
       description: string
       memberIds: string[]
       type: 'public' | 'private'
+      projectId: string | null
     }>,
   ) {
     return apiPatch<{ channel: Channel }>(`/channels/${channelId}`, input)

@@ -1,12 +1,13 @@
-import { Bookmark, MessageCircle, Pin } from 'lucide-react'
+import { Bookmark, ListTodo, MessageCircle, Pin } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PresenceDot } from '@/components/shared/PresenceDot'
 import { ReactionBar } from '@/features/chat/components/ReactionBar'
 import { MessageAttachments } from '@/features/chat/components/MessageAttachments'
+import { TaskCardMessage } from '@/features/chat/components/TaskCardMessage'
 import { splitMessageBody, type MentionUser } from '@/features/chat/utils/mentions'
 import { usePresence } from '@/hooks/usePresence'
 import { formatDateTime, getInitials, cn } from '@/utils/cn'
-import type { Message, User } from '@/types'
+import type { Message, MessageTaskCardMeta, User } from '@/types'
 
 interface MessageRowProps {
   message: Message
@@ -15,10 +16,12 @@ interface MessageRowProps {
   usersById?: Map<string, MentionUser>
   onToggleReaction: (emoji: string) => void
   onOpenThread?: () => void
+  onOpenTask?: (taskId: string) => void
   onPin?: () => void
   onUnpin?: () => void
   onBookmark?: () => void
   onRemoveBookmark?: () => void
+  onCreateTask?: () => void
   isPinned?: boolean
   isBookmarked?: boolean
   isThreadReply?: boolean
@@ -58,16 +61,22 @@ export function MessageRow({
   usersById,
   onToggleReaction,
   onOpenThread,
+  onOpenTask,
   onPin,
   onUnpin,
   onBookmark,
   onRemoveBookmark,
+  onCreateTask,
   isPinned = false,
   isBookmarked = false,
   isThreadReply = false,
 }: MessageRowProps) {
   const replyCount = message.replyCount ?? 0
   const { status } = usePresence(author?.id)
+  const taskMeta =
+    message.kind === 'task_card' && message.meta && typeof message.meta === 'object'
+      ? (message.meta as MessageTaskCardMeta)
+      : null
 
   return (
     <div
@@ -97,6 +106,17 @@ export function MessageRow({
             </span>
           ) : null}
           <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            {onCreateTask && !taskMeta ? (
+              <button
+                type="button"
+                onClick={onCreateTask}
+                className="rounded p-0.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                title="Create task from message"
+                aria-label="Create task from message"
+              >
+                <ListTodo className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
             {onPin || onUnpin ? (
               <button
                 type="button"
@@ -127,30 +147,51 @@ export function MessageRow({
             ) : null}
           </div>
         </div>
-        {message.body ? <MessageBody body={message.body} usersById={usersById} /> : null}
-        <MessageAttachments attachments={message.attachments || []} />
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <ReactionBar
-            reactions={message.reactions}
-            currentUserId={currentUserId}
-            onToggle={onToggleReaction}
+        {taskMeta ? (
+          <TaskCardMessage
+            meta={taskMeta}
+            usersById={usersById}
+            onOpenTask={onOpenTask}
+            onOpenThread={!isThreadReply ? onOpenThread : undefined}
+            replyCount={replyCount}
           />
-          {!isThreadReply ? (
-            <button
-              type="button"
-              onClick={onOpenThread}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium transition',
-                replyCount > 0
-                  ? 'text-primary hover:bg-primary/10'
-                  : 'text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100',
-              )}
-            >
-              <MessageCircle className="h-3 w-3" />
-              {replyCount > 0 ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'Reply'}
-            </button>
-          ) : null}
-        </div>
+        ) : (
+          <>
+            {message.body ? <MessageBody body={message.body} usersById={usersById} /> : null}
+            <MessageAttachments attachments={message.attachments || []} />
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <ReactionBar
+                reactions={message.reactions}
+                currentUserId={currentUserId}
+                onToggle={onToggleReaction}
+              />
+              {!isThreadReply ? (
+                <button
+                  type="button"
+                  onClick={onOpenThread}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium transition',
+                    replyCount > 0
+                      ? 'text-primary hover:bg-primary/10'
+                      : 'text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100',
+                  )}
+                >
+                  <MessageCircle className="h-3 w-3" />
+                  {replyCount > 0 ? `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'Reply'}
+                </button>
+              ) : null}
+            </div>
+          </>
+        )}
+        {taskMeta ? (
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <ReactionBar
+              reactions={message.reactions}
+              currentUserId={currentUserId}
+              onToggle={onToggleReaction}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )

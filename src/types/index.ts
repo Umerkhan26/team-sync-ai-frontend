@@ -333,12 +333,28 @@ export interface MessageReaction {
   userIds: string[]
 }
 
+export interface MessageTaskCardMeta {
+  taskId: string
+  projectId?: string
+  projectName?: string
+  number?: number | null
+  title: string
+  description?: string
+  status?: string
+  priority?: string
+  assigneeIds?: string[]
+  dueDate?: string | null
+  event?: 'created' | 'updated' | 'status' | 'assigned'
+}
+
 export interface Message {
   id: string
   channelId: string
   organizationId: string
   authorId: string | User
   body: string
+  kind?: 'text' | 'task_card'
+  meta?: MessageTaskCardMeta | Record<string, unknown> | null
   parentMessageId?: string | null
   attachments?: MessageAttachment[]
   reactions?: MessageReaction[]

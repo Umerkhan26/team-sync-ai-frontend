@@ -48,7 +48,38 @@ export function applyMentionReplacement(
   return { next, nextCaret: start + token.length }
 }
 
-/** Split body into plain / mention segments for display. */
+/** Extract @ObjectId mention user ids from message body. */
+export function extractMentionIds(body: string): string[] {
+  const ids = new Set<string>()
+  for (const match of body.matchAll(/@([a-f\d]{24})\b/gi)) {
+    if (match[1]) ids.add(match[1])
+  }
+  return Array.from(ids)
+}
+
+/** Human-readable body for task title (mentions → @Name). */
+export function bodyToPlainTitle(
+  body: string,
+  usersById: Map<string, MentionUser>,
+  maxLen = 120,
+): string {
+  const plain = body
+    .replace(/@([a-f\d]{24})\b/gi, (_, id: string) => {
+      const user = usersById.get(id)
+      return user?.name ? `@${user.name}` : '@member'
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!plain) return 'Task from chat'
+  return plain.length > maxLen ? `${plain.slice(0, maxLen - 1)}…` : plain
+}
+
+export function chatMessageDeepLink(channelId: string, messageId: string) {
+  if (typeof window === 'undefined') {
+    return `/app/chat?channelId=${channelId}&messageId=${messageId}`
+  }
+  return `${window.location.origin}/app/chat?channelId=${channelId}&messageId=${messageId}`
+}
 export function splitMessageBody(
   body: string,
   usersById: Map<string, MentionUser>,
