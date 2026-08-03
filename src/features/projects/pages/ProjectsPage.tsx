@@ -87,7 +87,7 @@ export function ProjectsPage() {
   const query = useQuery({
     queryKey: ['projects', orgId],
     queryFn: () => projectApi.list({ limit: 50 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('projects:read'),
   })
 
   const membersQuery = useQuery({
@@ -99,7 +99,7 @@ export function ProjectsPage() {
   const tasksQuery = useQuery({
     queryKey: ['tasks', orgId, 'project-health'],
     queryFn: () => taskApi.list({ limit: 100 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('projects:read'),
   })
 
   const tasksByProject = useMemo(() => {
@@ -192,6 +192,15 @@ export function ProjectsPage() {
     [allProjects, showArchived],
   )
   const canManage = can('projects:update')
+
+  if (!can('projects:read')) {
+    return (
+      <EmptyState
+        title="No project access"
+        description="Your role cannot view projects in this workspace."
+      />
+    )
+  }
 
   const renderCard = (project: Project) => (
     <div
@@ -362,7 +371,7 @@ export function ProjectsPage() {
       {!orgId ? (
         <EmptyState title="Select an organization" description="Choose an org to list projects." />
       ) : query.isLoading ? (
-        <LoadingState />
+        <LoadingState variant="grid" rows={6} />
       ) : query.isError ? (
         <ErrorState onRetry={() => void query.refetch()} />
       ) : projects.length === 0 ? (

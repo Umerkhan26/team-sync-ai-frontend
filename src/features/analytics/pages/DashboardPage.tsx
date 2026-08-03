@@ -185,7 +185,7 @@ export function DashboardPage() {
     tasksQuery.isLoading ||
     (can('analytics:read') && overviewQuery.isLoading)
   ) {
-    return <LoadingState rows={6} />
+    return <LoadingState variant="page" rows={5} />
   }
 
   const overview = overviewQuery.data
@@ -364,7 +364,7 @@ export function DashboardPage() {
   ].filter(Boolean) as { to: string; label: string; icon: typeof ListTodo }[]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         eyebrow="Overview"
         title={

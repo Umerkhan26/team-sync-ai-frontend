@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAppSelector } from '@/store'
-import { PageLoading } from '@/components/shared/LoadingState'
+import { AppShellSkeleton, PageLoading } from '@/components/shared/LoadingState'
 import { useAuthBootstrap } from '@/hooks/useAuthBootstrap'
 
 export function ProtectedRoute({ requireVerified = true }: { requireVerified?: boolean }) {
@@ -10,11 +10,7 @@ export function ProtectedRoute({ requireVerified = true }: { requireVerified?: b
   const accessToken = useAppSelector((s) => s.auth.accessToken)
 
   if (!initialized || isLoading) {
-    return (
-      <div className="mx-auto max-w-3xl p-8">
-        <PageLoading />
-      </div>
-    )
+    return <AppShellSkeleton />
   }
 
   if (!accessToken || !user) {
@@ -35,8 +31,8 @@ export function GuestRoute() {
 
   if (!initialized || isLoading) {
     return (
-      <div className="mx-auto max-w-3xl p-8">
-        <PageLoading />
+      <div className="mx-auto flex min-h-dvh max-w-3xl items-center p-8">
+        <PageLoading className="w-full" />
       </div>
     )
   }

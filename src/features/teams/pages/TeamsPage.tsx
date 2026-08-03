@@ -298,7 +298,7 @@ export function TeamsPage() {
       {!orgId ? (
         <EmptyState title="Select an organization" />
       ) : teamsQuery.isLoading ? (
-        <LoadingState />
+        <LoadingState variant="grid" rows={6} />
       ) : teamsQuery.isError ? (
         <ErrorState onRetry={() => void teamsQuery.refetch()} />
       ) : teams.length === 0 ? (

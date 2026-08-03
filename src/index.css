@@ -162,7 +162,9 @@
 
   body.surface-app {
     background: var(--ts-background);
-    overflow-x: hidden;
+    overflow: hidden;
+    height: 100dvh;
+    max-height: 100dvh;
   }
 
   [data-theme="dark"] body.surface-app {
@@ -216,7 +218,7 @@ html[data-theme="dark"] .ts-topbar {
 
 .ts-content-frame {
   background: var(--ts-background) !important;
-  min-height: 100vh;
+  min-height: 0;
 }
 
 html[data-theme="dark"] .ts-content-frame {
@@ -225,6 +227,28 @@ html[data-theme="dark"] .ts-content-frame {
 
 .ts-main-canvas {
   background: transparent;
+}
+
+/* Secondary rails (settings nav, chat channel list, etc.) */
+.ts-module-rail {
+  background: var(--ts-muted);
+  border: 1px solid var(--ts-border);
+  border-radius: var(--radius-lg);
+}
+
+html[data-theme="dark"] .ts-module-rail {
+  background: #1a2734;
+  border-color: #314356;
+}
+
+.ts-module-rail-flat {
+  background: var(--ts-muted);
+  border-color: var(--ts-border);
+}
+
+html[data-theme="dark"] .ts-module-rail-flat {
+  background: #1a2734;
+  border-color: #314356;
 }
 
 .surface-panel {
@@ -252,6 +276,74 @@ html[data-theme="dark"] .surface-panel {
 html[data-theme="dark"] .surface-elevated {
   background: #2c3e52 !important;
   border-color: #4a5f78 !important;
+}
+
+/* Shimmer skeleton — sweeping highlight like Notion / Linear / Slack */
+.ts-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ts-muted-foreground) 14%, var(--ts-muted));
+  isolation: isolate;
+}
+
+.ts-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--ts-foreground) 8%, transparent) 45%,
+    color-mix(in srgb, var(--ts-foreground) 14%, transparent) 50%,
+    color-mix(in srgb, var(--ts-foreground) 8%, transparent) 55%,
+    transparent 100%
+  );
+  animation: ts-shimmer-sweep 1.35s ease-in-out infinite;
+}
+
+html[data-theme="dark"] .ts-shimmer {
+  background: #2a3a4c;
+}
+
+html[data-theme="dark"] .ts-shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 60%,
+    transparent 100%
+  );
+}
+
+/* Sidebar chrome uses darker base; keep shimmer readable on it */
+.ts-sidebar .ts-shimmer {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ts-sidebar .ts-shimmer::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.16) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+}
+
+@keyframes ts-shimmer-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ts-shimmer::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .mesh-panel {
@@ -287,7 +379,6 @@ html[data-theme="dark"] .surface-elevated {
 
   .module-header {
     position: relative;
-    padding-bottom: 1rem;
     border-bottom: 1px solid color-mix(in srgb, var(--ts-border) 80%, transparent);
   }
 
@@ -296,7 +387,7 @@ html[data-theme="dark"] .surface-elevated {
     position: absolute;
     left: 0;
     bottom: -1px;
-    width: 3.5rem;
+    width: 2.5rem;
     height: 2px;
     border-radius: 999px;
     background: linear-gradient(90deg, var(--ts-primary), transparent);
@@ -317,7 +408,9 @@ html[data-theme="dark"] .surface-elevated {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    min-height: calc(100vh - 8.5rem);
+    min-height: 0;
+    height: 100%;
+    flex: 1 1 auto;
     border-radius: var(--radius-xl);
     overflow: hidden;
     border: 1px solid var(--ts-border);

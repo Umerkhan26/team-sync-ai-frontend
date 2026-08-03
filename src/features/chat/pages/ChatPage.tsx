@@ -17,7 +17,6 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
 import { LoadingState } from '@/components/shared/LoadingState'
@@ -117,31 +116,45 @@ export function ChatPage() {
   const channelsQuery = useQuery({
     queryKey: ['channels', orgId],
     queryFn: () => channelApi.list({ limit: 100 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('channels:read'),
   })
 
   const membersQuery = useQuery({
     queryKey: ['members', orgId],
     queryFn: () => orgApi.listMembers(orgId!),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('channels:read'),
   })
 
   const channels = channelsQuery.data?.data.items ?? EMPTY_CHANNELS
   const members = membersQuery.data ?? []
   const channelIdFromUrl = searchParams.get('channelId')
+  const messageIdFromUrl = searchParams.get('messageId')
 
   const unreadSummaryQuery = useQuery({
     queryKey: ['channels', 'unread-summary', orgId],
     queryFn: () => channelApi.unreadSummary(),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('channels:read'),
     refetchInterval: 60_000,
   })
 
   const bookmarksQuery = useQuery({
     queryKey: ['channels', 'bookmarks', orgId],
     queryFn: () => channelApi.listBookmarks(),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('channels:read'),
   })
+
+  useEffect(() => {
+    const open = searchParams.get('open')
+    if (!open) return
+    if (open === '1' || open === 'channel') {
+      if (can('channels:create')) setChannelDialogOpen(true)
+    } else if (open === 'dm') {
+      setDmDialogOpen(true)
+    }
+    searchParams.delete('open')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // URL is the single source of truth — avoids setState ↔ searchParams loops
   // that were refetching messages on every navigation tick.
@@ -200,6 +213,19 @@ export function ChatPage() {
     }
     return map
   }, [members])
+
+  const mentionUsers = useMemo(() => {
+    const selected = channels.find((c) => c.id === selectedId)
+    const ids = selected?.memberIds?.length ? new Set(selected.memberIds.map(String)) : null
+    return Array.from(usersById.values())
+      .filter((u) => !ids || ids.has(u.id) || selected?.type === 'public')
+      .map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatarUrl: u.avatarUrl,
+      }))
+  }, [usersById, channels, selectedId])
 
   const dmPeer = (channel: Channel): User | null => {
     const otherId = (channel.memberIds || []).find((id) => id !== currentUser?.id)
@@ -584,6 +610,17 @@ export function ChatPage() {
     document.getElementById(`msg-${messageId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  useEffect(() => {
+    if (!messageIdFromUrl || !selectedId) return
+    const t = window.setTimeout(() => {
+      jumpToMessage(messageIdFromUrl)
+      searchParams.delete('messageId')
+      setSearchParams(searchParams, { replace: true })
+    }, 350)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageIdFromUrl, selectedId, messages.length])
+
   const goToBookmark = (channelId: string, messageId: string) => {
     selectChannel(channelId)
     window.setTimeout(() => jumpToMessage(messageId), 400)
@@ -597,56 +634,60 @@ export function ChatPage() {
     .filter(Boolean)
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-hidden">
-      <PageHeader
-        eyebrow="Collaboration"
-        title="Chat"
-        description="Channels, direct messages, presence, and threaded conversations."
-        actions={
-          <>
-            <Button variant="outline" onClick={() => setDmDialogOpen(true)}>
-              <Users className="h-4 w-4" />
-              New DM
-            </Button>
-            {can('channels:create') ? (
-              <Button onClick={() => openChannelDialog(false)}>
-                <Plus className="h-4 w-4" />
-                New channel
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-
-      {!orgId ? (
+    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden">
+      {!can('channels:read') ? (
+        <EmptyState
+          title="No chat access"
+          description="Your role cannot view channels in this workspace."
+        />
+      ) : !orgId ? (
         <EmptyState title="Select an organization" />
       ) : channelsQuery.isLoading ? (
-        <LoadingState />
+        <LoadingState variant="chat" />
       ) : channelsQuery.isError ? (
         <ErrorState onRetry={() => void channelsQuery.refetch()} />
       ) : (
         <div
           className={cn(
-            'ts-chat-shell grid w-full min-w-0',
-            // minmax(0,1fr) lets the message column shrink when the thread opens (Slack-style)
+            'ts-chat-shell grid min-h-0 flex-1',
             activeThreadId
               ? 'lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,320px)]'
               : 'lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]',
           )}
         >
-          <aside className="flex min-h-0 min-w-0 max-h-[40vh] flex-col overflow-hidden border-b border-border/80 lg:max-h-none lg:border-b-0 lg:border-r">
-            <div className="border-b border-border/70 p-2.5">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search channels"
-                  className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-ring/30"
-                />
+          <aside className="ts-module-rail-flat flex min-h-0 min-w-0 flex-col overflow-hidden border-b lg:border-b-0 lg:border-r">
+            <div className="shrink-0 space-y-2 border-b border-border/70 p-2">
+              <div className="flex items-center gap-1">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search channels"
+                    className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-xs text-foreground placeholder:text-muted-foreground transition focus:outline-none focus:ring-2 focus:ring-ring/30"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="New DM"
+                  onClick={() => setDmDialogOpen(true)}
+                >
+                  <Users className="h-4 w-4" />
+                </Button>
+                {can('channels:create') ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="New channel"
+                    onClick={() => openChannelDialog(false)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                ) : null}
               </div>
             </div>
-            <div className="ts-scrollbar flex-1 overflow-y-auto py-1">
+            <div className="ts-scrollbar min-h-0 flex-1 overflow-y-auto py-1">
               {noSearchResults ? (
                 <p className="px-4 py-8 text-center text-xs text-muted-foreground">
                   No channels match “{search}”.
@@ -693,7 +734,7 @@ export function ChatPage() {
             </div>
           </aside>
 
-          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[color:var(--ts-card)]">
             {!selected ? (
               <EmptyState
                 className="m-4 border-0 bg-transparent"
@@ -705,7 +746,7 @@ export function ChatPage() {
               />
             ) : (
               <>
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 border-b border-border/70 px-3 py-3 sm:px-4">
+                <div className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-2 border-b border-border/70 px-3 py-2.5 sm:px-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-1.5">
                       {selected.type === 'direct' ? (
@@ -855,6 +896,7 @@ export function ChatPage() {
                             message={msg}
                             author={authorOf(msg)}
                             currentUserId={currentUser?.id}
+                            usersById={usersById}
                             onToggleReaction={(emoji) =>
                               toggleReaction.mutate({ messageId: msg.id, emoji })
                             }
@@ -873,25 +915,29 @@ export function ChatPage() {
                 </div>
 
                 {typingNames.length > 0 ? (
-                  <p className="px-4 pb-1 text-[11px] italic text-muted-foreground">
+                  <p className="shrink-0 px-4 pb-1 text-[11px] italic text-muted-foreground">
                     {typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing…
                   </p>
                 ) : null}
 
-                <MessageComposer
-                  placeholder={`Message ${selected.type === 'direct' ? channelTitle(selected) : '#' + selected.name}`}
-                  onSend={(body, attachments) => sendMessage.mutate({ body, attachments })}
-                  onTyping={() => handleTyping()}
-                  sending={sendMessage.isPending}
-                  autoFocus
-                />
+                <div className="shrink-0 border-t border-border/60">
+                  <MessageComposer
+                    placeholder={`Message ${selected.type === 'direct' ? channelTitle(selected) : '#' + selected.name}`}
+                    onSend={(body, attachments) => sendMessage.mutate({ body, attachments })}
+                    onTyping={() => handleTyping()}
+                    sending={sendMessage.isPending}
+                    mentionUsers={mentionUsers}
+                    currentUserId={currentUser?.id}
+                    autoFocus
+                  />
+                </div>
               </>
             )}
           </section>
 
           {activeThreadId ? (
-            <aside className="flex min-h-0 min-w-0 max-h-[50vh] flex-col overflow-hidden border-t border-border bg-[color:var(--ts-elevated)] lg:max-h-none lg:border-l lg:border-t-0">
-              <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-3 py-3">
+            <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-border bg-[color:var(--ts-elevated)] lg:border-l lg:border-t-0">
+              <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-3 py-2.5">
                 <h3 className="text-[13px] font-semibold text-foreground">Thread</h3>
                 <Button
                   variant="ghost"
@@ -909,6 +955,7 @@ export function ChatPage() {
                       message={threadParent}
                       author={authorOf(threadParent)}
                       currentUserId={currentUser?.id}
+                      usersById={usersById}
                       onToggleReaction={(emoji) =>
                         toggleReaction.mutate({ messageId: threadParent.id, emoji })
                       }
@@ -932,17 +979,22 @@ export function ChatPage() {
                       message={msg}
                       author={authorOf(msg)}
                       currentUserId={currentUser?.id}
+                      usersById={usersById}
                       onToggleReaction={(emoji) => toggleReaction.mutate({ messageId: msg.id, emoji })}
                       isThreadReply
                     />
                   ))
                 )}
               </div>
-              <MessageComposer
-                placeholder="Reply in thread"
-                onSend={(body, attachments) => sendReply.mutate({ body, attachments })}
-                sending={sendReply.isPending}
-              />
+              <div className="shrink-0 border-t border-border/60">
+                <MessageComposer
+                  placeholder="Reply in thread"
+                  onSend={(body, attachments) => sendReply.mutate({ body, attachments })}
+                  sending={sendReply.isPending}
+                  mentionUsers={mentionUsers}
+                  currentUserId={currentUser?.id}
+                />
+              </div>
             </aside>
           ) : null}
         </div>

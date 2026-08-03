@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PresenceDot } from '@/components/shared/PresenceDot'
 import { ReactionBar } from '@/features/chat/components/ReactionBar'
 import { MessageAttachments } from '@/features/chat/components/MessageAttachments'
+import { splitMessageBody, type MentionUser } from '@/features/chat/utils/mentions'
 import { usePresence } from '@/hooks/usePresence'
 import { formatDateTime, getInitials, cn } from '@/utils/cn'
 import type { Message, User } from '@/types'
@@ -11,6 +12,7 @@ interface MessageRowProps {
   message: Message
   author: User | null
   currentUserId?: string
+  usersById?: Map<string, MentionUser>
   onToggleReaction: (emoji: string) => void
   onOpenThread?: () => void
   onPin?: () => void
@@ -22,10 +24,38 @@ interface MessageRowProps {
   isThreadReply?: boolean
 }
 
+function MessageBody({
+  body,
+  usersById,
+}: {
+  body: string
+  usersById?: Map<string, MentionUser>
+}) {
+  const parts = splitMessageBody(body, usersById || new Map())
+  return (
+    <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">
+      {parts.map((part, i) =>
+        part.type === 'mention' ? (
+          <span
+            key={`${part.userId}-${i}`}
+            className="rounded bg-primary/15 px-1 py-0.5 font-medium text-primary"
+            title={part.label}
+          >
+            @{part.label}
+          </span>
+        ) : (
+          <span key={i}>{part.value}</span>
+        ),
+      )}
+    </p>
+  )
+}
+
 export function MessageRow({
   message,
   author,
   currentUserId,
+  usersById,
   onToggleReaction,
   onOpenThread,
   onPin,
@@ -97,11 +127,7 @@ export function MessageRow({
             ) : null}
           </div>
         </div>
-        {message.body ? (
-          <p className="whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-foreground/90 [overflow-wrap:anywhere]">
-            {message.body}
-          </p>
-        ) : null}
+        {message.body ? <MessageBody body={message.body} usersById={usersById} /> : null}
         <MessageAttachments attachments={message.attachments || []} />
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <ReactionBar

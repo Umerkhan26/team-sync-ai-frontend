@@ -84,7 +84,7 @@ export function IntegrationsPage() {
       {!orgId ? (
         <EmptyState title="Select an organization" />
       ) : integrationsQuery.isLoading ? (
-        <LoadingState rows={4} />
+        <LoadingState variant="grid" rows={6} />
       ) : integrationsQuery.isError ? (
         <ErrorState onRetry={() => void integrationsQuery.refetch()} />
       ) : (

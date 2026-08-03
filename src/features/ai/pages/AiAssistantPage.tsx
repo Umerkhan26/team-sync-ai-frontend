@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { aiApi } from '@/services/fileApi'
 import { useAppSelector } from '@/store'
+import { usePermissions } from '@/hooks/usePermissions'
 import { getErrorMessage } from '@/utils/cn'
 import { useStreamingText } from '@/hooks/useStreamingText'
 import {
@@ -70,6 +71,7 @@ function CreditMeter({ credits, max = 100 }: { credits: number; max?: number }) 
 
 export function AiAssistantPage() {
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
+  const { can } = usePermissions()
   const [output, setOutput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [credits, setCredits] = useState(() => (orgId ? getAiCredits(orgId) : 42))
@@ -154,6 +156,15 @@ export function AiAssistantPage() {
     toast.success('Prompt removed')
   }
 
+  if (!can('ai:use')) {
+    return (
+      <EmptyState
+        title="No AI access"
+        description="Your role cannot use the AI assistant in this workspace."
+      />
+    )
+  }
+
   if (!orgId) {
     return <EmptyState title="Select an organization" />
   }
@@ -166,7 +177,7 @@ export function AiAssistantPage() {
         <PageHeader
           eyebrow="Intelligence"
           title="AI Assistant"
-          description="Draft task copy, summarize threads, and sketch sprint plans."
+          description="Draft task copy, summarize threads, and sketch sprint plans. Credits and citations are demo meters until billing/RAG ship."
           actions={
             <Button
               variant="outline"
@@ -334,7 +345,7 @@ export function AiAssistantPage() {
         </div>
       </div>
 
-      <section className="space-y-3">
+      <section className="ts-module-rail space-y-3 p-4">
         <div className="flex items-center justify-between">
           <h2 className="app-title text-base">Output</h2>
           {output ? (

@@ -85,8 +85,8 @@ export function BillingPage() {
   }
 
   const checkout = (planName: string) => {
-    toast.info('Redirecting to Stripe checkout…', {
-      description: `Upgrade to ${planName} — payment flow is stubbed for MVP.`,
+    toast.info('Stripe checkout is a preview', {
+      description: `${planName} payments are not live yet — no card will be charged.`,
     })
   }
 
@@ -111,12 +111,15 @@ export function BillingPage() {
       <PageHeader
         eyebrow="Plan & seats"
         title="Billing"
-        description={`${org?.name || 'Workspace'} · current plan: ${currentPlan}. Manage seats and invoices below.`}
+        description={`${org?.name || 'Workspace'} · current plan: ${currentPlan}. Stripe checkout is a preview — payments are not charged yet.`}
         actions={
-          <Button size="sm" onClick={() => checkout('Pro')}>
-            <CreditCard className="h-3.5 w-3.5" />
-            Stripe checkout
-          </Button>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">Preview</Badge>
+            <Button size="sm" onClick={() => checkout('Pro')}>
+              <CreditCard className="h-3.5 w-3.5" />
+              Stripe checkout (preview)
+            </Button>
+          </div>
         }
       />
 

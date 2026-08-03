@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Bot,
   CalendarClock,
+  CreditCard,
   FileText,
   FolderKanban,
   FolderOpen,
@@ -14,6 +15,7 @@ import {
   ListTodo,
   MessageSquare,
   Plus,
+  Plug,
   Search,
   Settings,
   Shield,
@@ -21,7 +23,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/store'
-import { setAiPanelOpen, setCommandOpen } from '@/store/uiSlice'
+import { setActiveTaskId, setAiPanelOpen, setCommandOpen } from '@/store/uiSlice'
 import { usePermissions } from '@/hooks/usePermissions'
 import { searchApi } from '@/services/searchApi'
 import { cn, getInitials } from '@/utils/cn'
@@ -71,7 +73,9 @@ export function CommandPalette() {
       { label: 'Meetings', to: '/app/meetings', icon: CalendarClock, show: can('meetings:read') },
       { label: 'Templates', to: '/app/templates', icon: LayoutTemplate, show: can('projects:create') },
       { label: 'AI Assistant', to: '/app/ai', icon: Bot, show: can('ai:use') },
+      { label: 'Integrations', to: '/app/integrations', icon: Plug, show: can('org:read') },
       { label: 'Admin', to: '/app/admin', icon: Shield, show: canManageWorkspace },
+      { label: 'Billing', to: '/app/billing', icon: CreditCard, show: can('org:billing') },
       { label: 'Settings', to: '/app/settings', icon: Settings, show: true },
       { label: 'Help', to: '/app/help', icon: HelpCircle, show: true },
     ]
@@ -135,7 +139,7 @@ export function CommandPalette() {
               {can('projects:create') ? (
                 <Command.Item
                   value="create project"
-                  onSelect={() => run(() => navigate('/app/projects'))}
+                  onSelect={() => run(() => navigate('/app/projects?open=1'))}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                 >
                   <Plus className="h-4 w-4" />
@@ -145,11 +149,41 @@ export function CommandPalette() {
               {can('tasks:create') ? (
                 <Command.Item
                   value="create task"
-                  onSelect={() => run(() => navigate('/app/tasks'))}
+                  onSelect={() => run(() => navigate('/app/tasks?open=1'))}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                 >
                   <Plus className="h-4 w-4" />
                   Create task
+                </Command.Item>
+              ) : null}
+              {can('documents:create') ? (
+                <Command.Item
+                  value="create document"
+                  onSelect={() => run(() => navigate('/app/documents?open=1'))}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create document
+                </Command.Item>
+              ) : null}
+              {can('channels:create') ? (
+                <Command.Item
+                  value="create channel"
+                  onSelect={() => run(() => navigate('/app/chat?open=1'))}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create channel
+                </Command.Item>
+              ) : null}
+              {can('meetings:create') ? (
+                <Command.Item
+                  value="create meeting"
+                  onSelect={() => run(() => navigate('/app/meetings?open=1'))}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                >
+                  <Plus className="h-4 w-4" />
+                  Schedule meeting
                 </Command.Item>
               ) : null}
               {can('ai:use') ? (
@@ -193,7 +227,12 @@ export function CommandPalette() {
                       <Command.Item
                         key={task.id}
                         value={`search task ${task.title} ${task.number}`}
-                        onSelect={() => run(() => navigate(`/app/tasks?highlight=${task.id}`))}
+                        onSelect={() =>
+                          run(() => {
+                            dispatch(setActiveTaskId(task.id))
+                            navigate(`/app/tasks?taskId=${task.id}`)
+                          })
+                        }
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                       >
                         <ListTodo className="h-4 w-4 text-muted-foreground" />
@@ -244,7 +283,9 @@ export function CommandPalette() {
                       <Command.Item
                         key={meeting.id}
                         value={`search meeting ${meeting.title}`}
-                        onSelect={() => run(() => navigate('/app/meetings'))}
+                        onSelect={() =>
+                          run(() => navigate(`/app/meetings?meetingId=${meeting.id}`))
+                        }
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                       >
                         <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -260,7 +301,7 @@ export function CommandPalette() {
                       <Command.Item
                         key={file.id}
                         value={`search file ${file.fileName}`}
-                        onSelect={() => run(() => navigate('/app/files'))}
+                        onSelect={() => run(() => navigate(`/app/files?fileId=${file.id}`))}
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                       >
                         <FolderOpen className="h-4 w-4 text-muted-foreground" />
@@ -277,7 +318,13 @@ export function CommandPalette() {
                         key={person.id}
                         value={`search person ${person.name} ${person.email}`}
                         onSelect={() =>
-                          run(() => navigate(canManageWorkspace ? '/app/admin' : '/app/teams'))
+                          run(() =>
+                            navigate(
+                              canManageWorkspace
+                                ? `/app/admin?memberId=${person.id}`
+                                : '/app/teams',
+                            ),
+                          )
                         }
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
                       >

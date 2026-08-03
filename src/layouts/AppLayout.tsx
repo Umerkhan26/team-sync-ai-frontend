@@ -57,7 +57,7 @@ import { useOrganizationsSync } from '@/hooks/useOrganizationsSync'
 import { usePermissions, type Permission } from '@/hooks/usePermissions'
 import { useSurfaceMode } from '@/hooks/useSurfaceMode'
 import { OrgSwitcher } from '@/features/organizations/components/OrgSwitcher'
-import { PageLoading } from '@/components/shared/LoadingState'
+import { AppShellSkeleton } from '@/components/shared/LoadingState'
 import { CommandPalette } from '@/components/shell/CommandPalette'
 import { AiPanel } from '@/components/shell/AiPanel'
 import { NotificationCenter } from '@/components/shell/NotificationCenter'
@@ -95,8 +95,40 @@ const manageNav: NavItem[] = [
 
 function breadcrumbLabel(pathname: string) {
   if (pathname === '/app') return 'Home'
-  const part = pathname.split('/').filter(Boolean).pop() || 'Home'
-  return part.charAt(0).toUpperCase() + part.slice(1)
+  const parts = pathname.split('/').filter(Boolean)
+  const last = parts[parts.length - 1] || 'Home'
+  const prev = parts[parts.length - 2]
+
+  const labels: Record<string, string> = {
+    app: 'Home',
+    projects: 'Projects',
+    tasks: 'Tasks',
+    chat: 'Chat',
+    documents: 'Documents',
+    files: 'Files',
+    teams: 'Teams',
+    meetings: 'Meetings',
+    templates: 'Templates',
+    integrations: 'Integrations',
+    ai: 'AI',
+    admin: 'Admin',
+    billing: 'Billing',
+    settings: 'Settings',
+    help: 'Help',
+    room: 'Room',
+  }
+
+  if (labels[last]) return labels[last]
+
+  // ObjectId / UUID-looking segments → friendly parent label
+  if (/^[a-f0-9]{24}$/i.test(last) || /^[0-9a-f-]{36}$/i.test(last)) {
+    if (prev === 'projects') return 'Project'
+    if (prev === 'documents') return 'Document'
+    if (prev === 'meetings') return 'Meeting'
+    return 'Detail'
+  }
+
+  return last.charAt(0).toUpperCase() + last.slice(1)
 }
 
 export function AppLayout() {
@@ -164,11 +196,7 @@ export function AppLayout() {
   }
 
   if (orgsQuery.isLoading) {
-    return (
-      <div className="mx-auto max-w-3xl p-8">
-        <PageLoading />
-      </div>
-    )
+    return <AppShellSkeleton />
   }
 
   if (orgsQuery.isSuccess && (!orgsQuery.data || orgsQuery.data.length === 0)) {
@@ -184,7 +212,7 @@ export function AppLayout() {
     )
 
   const renderNav = (collapsed: boolean) => (
-    <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-2 py-3">
+    <div className="ts-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-2">
       <div>
         {!collapsed ? (
           <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--ts-sidebar-muted)]">
@@ -251,15 +279,19 @@ export function AppLayout() {
     </div>
   )
 
+  const isChat = location.pathname.startsWith('/app/chat')
+  const isMeetingRoom = /\/app\/meetings\/[^/]+\/room/.test(location.pathname)
+  const isImmersive = isChat || isMeetingRoom
+
   return (
-    <div className="min-h-screen min-w-0 overflow-x-hidden lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
+    <div className="h-dvh max-h-dvh min-w-0 overflow-hidden lg:grid lg:grid-cols-[auto_minmax(0,1fr)]">
       <aside
         className={cn(
-          'ts-sidebar sticky top-0 hidden h-screen flex-col border-r transition-[width] lg:flex',
+          'ts-sidebar hidden h-dvh min-h-0 flex-col overflow-hidden border-r transition-[width] lg:flex',
           sidebarOpen ? 'w-[240px]' : 'w-[64px]',
         )}
       >
-        <div className="flex h-14 items-center gap-2 border-b border-[color:var(--ts-sidebar-border)] px-3">
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[color:var(--ts-sidebar-border)] px-3">
           <img src="/brand/logo-mark.png" alt="TeamSync AI" className="h-7 w-7 rounded-md" />
           {sidebarOpen ? (
             <div className="min-w-0">
@@ -281,8 +313,8 @@ export function AppLayout() {
             aria-label="Close navigation"
             onClick={() => dispatch(setMobileNavOpen(false))}
           />
-          <aside className="ts-sidebar relative z-50 flex h-full w-72 flex-col shadow-xl">
-            <div className="flex h-14 items-center justify-between border-b border-[color:var(--ts-sidebar-border)] px-4">
+          <aside className="ts-sidebar relative z-50 flex h-full w-72 flex-col overflow-hidden shadow-xl">
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-[color:var(--ts-sidebar-border)] px-4">
               <div className="flex items-center gap-2">
                 <img src="/brand/logo-mark.png" alt="TeamSync AI" className="h-7 w-7 rounded-md" />
                 <span className="text-sm font-semibold">TeamSync AI</span>
@@ -301,8 +333,8 @@ export function AppLayout() {
         </div>
       ) : null}
 
-      <div className="ts-content-frame flex min-h-screen min-w-0 flex-col overflow-x-hidden">
-        <header className="ts-topbar sticky top-0 z-30 flex h-14 items-center gap-2 border-b px-3 sm:px-4">
+      <div className="ts-content-frame flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden">
+        <header className="ts-topbar z-30 flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -362,23 +394,28 @@ export function AppLayout() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   {can('projects:create') ? (
-                    <DropdownMenuItem onClick={() => navigate('/app/projects')}>
+                    <DropdownMenuItem onClick={() => navigate('/app/projects?open=1')}>
                       Project
                     </DropdownMenuItem>
                   ) : null}
                   {can('tasks:create') ? (
-                    <DropdownMenuItem onClick={() => navigate('/app/tasks')}>
+                    <DropdownMenuItem onClick={() => navigate('/app/tasks?open=1')}>
                       Task
                     </DropdownMenuItem>
                   ) : null}
                   {can('documents:create') ? (
-                    <DropdownMenuItem onClick={() => navigate('/app/documents')}>
+                    <DropdownMenuItem onClick={() => navigate('/app/documents?open=1')}>
                       Document
                     </DropdownMenuItem>
                   ) : null}
                   {can('channels:create') ? (
-                    <DropdownMenuItem onClick={() => navigate('/app/chat')}>
+                    <DropdownMenuItem onClick={() => navigate('/app/chat?open=1')}>
                       Channel
+                    </DropdownMenuItem>
+                  ) : null}
+                  {can('meetings:create') ? (
+                    <DropdownMenuItem onClick={() => navigate('/app/meetings?open=1')}>
+                      Meeting
                     </DropdownMenuItem>
                   ) : null}
                 </DropdownMenuContent>
@@ -463,7 +500,14 @@ export function AppLayout() {
           </div>
         </header>
 
-        <main className="ts-main-canvas mx-auto w-full min-w-0 max-w-[1440px] flex-1 animate-in-fade overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
+        <main
+          className={cn(
+            'ts-main-canvas mx-auto w-full min-h-0 min-w-0 max-w-[1440px] flex-1 animate-in-fade',
+            isImmersive
+              ? 'flex flex-col overflow-hidden px-2 py-1.5 sm:px-3'
+              : 'overflow-x-hidden overflow-y-auto px-4 py-2.5 sm:px-6 lg:px-8',
+          )}
+        >
           <Outlet />
         </main>
       </div>

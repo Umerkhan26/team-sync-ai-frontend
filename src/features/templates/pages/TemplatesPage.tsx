@@ -395,7 +395,7 @@ export function TemplatesPage() {
 
         <TabsContent value={tab} className="mt-5">
           {customTemplatesQuery.isLoading && tab === 'custom' ? (
-            <LoadingState rows={3} />
+            <LoadingState variant="grid" rows={6} />
           ) : customTemplatesQuery.isError && tab === 'custom' ? (
             <ErrorState onRetry={() => void customTemplatesQuery.refetch()} />
           ) : visible.length === 0 ? (

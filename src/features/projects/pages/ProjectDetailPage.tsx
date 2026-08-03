@@ -40,13 +40,13 @@ export function ProjectDetailPage() {
   const projectQuery = useQuery({
     queryKey: ['projects', orgId, projectId],
     queryFn: () => projectApi.get(projectId),
-    enabled: Boolean(orgId && projectId),
+    enabled: Boolean(orgId && projectId) && can('projects:read'),
   })
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', orgId, projectId],
     queryFn: () => taskApi.list({ projectId, limit: 100 }),
-    enabled: Boolean(orgId && projectId),
+    enabled: Boolean(orgId && projectId) && can('tasks:read'),
   })
 
   const docsQuery = useQuery({
@@ -60,6 +60,15 @@ export function ProjectDetailPage() {
     queryFn: () => channelApi.list({ projectId, limit: 10 }),
     enabled: Boolean(orgId && projectId) && can('channels:read'),
   })
+
+  if (!can('projects:read')) {
+    return (
+      <EmptyState
+        title="No project access"
+        description="Your role cannot view projects in this workspace."
+      />
+    )
+  }
 
   if (projectQuery.isLoading) return <PageLoading />
   if (projectQuery.isError || !projectQuery.data) {

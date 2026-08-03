@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, Link } from 'react-router-dom'
+import { Navigate, Link, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -131,6 +131,7 @@ function inviteBadge(invite: { status: string; expiresAt?: string }) {
 }
 
 export function AdminPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const dispatch = useAppDispatch()
   const queryClient = useQueryClient()
   const org = useAppSelector((s) => s.org.activeOrganization)
@@ -169,6 +170,19 @@ export function AdminPage() {
     queryFn: () => orgApi.listMembers(org!.id),
     enabled: Boolean(org?.id) && can('members:read'),
   })
+
+  useEffect(() => {
+    const memberId = searchParams.get('memberId')
+    if (!memberId || membersQuery.isLoading || !membersQuery.data) return
+    const found = membersQuery.data.find((m) => {
+      const uid = typeof m.userId === 'object' ? m.userId.id : m.userId
+      return uid === memberId || m.id === memberId
+    })
+    if (found) setDetailMembership(found)
+    searchParams.delete('memberId')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [membersQuery.isLoading, membersQuery.data])
 
   const invitationsQuery = useQuery({
     queryKey: ['invitations', org?.id],
@@ -634,7 +648,7 @@ export function AdminPage() {
             ) : null}
 
             {membersQuery.isLoading ? (
-              <LoadingState rows={4} />
+              <LoadingState rows={5} />
             ) : membersQuery.isError ? (
               <ErrorState onRetry={() => void membersQuery.refetch()} />
             ) : totalMembers === 0 ? (
@@ -971,7 +985,8 @@ export function AdminPage() {
                 <div>
                   <h3 className="app-title text-sm">SSO setup</h3>
                   <p className="text-xs text-muted-foreground">
-                    Configure SAML/OIDC for your identity provider — stub wizard for MVP.
+                    Configure SAML/OIDC for your identity provider. This wizard is a preview — SSO is
+                    not enforced yet.
                   </p>
                 </div>
               </div>
@@ -1053,7 +1068,11 @@ export function AdminPage() {
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => toast.success('SSO test passed (stub) — production SAML coming soon')}
+                    onClick={() =>
+                      toast.info('SSO test is a preview', {
+                        description: 'Production SAML/OIDC is not live yet.',
+                      })
+                    }
                   >
                     Run test login
                   </Button>
@@ -1068,7 +1087,8 @@ export function AdminPage() {
               <div>
                 <h3 className="app-title text-sm">IP allowlist</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Restrict admin access to specific IPs or CIDR ranges. Saved locally for MVP.
+                  Restrict admin access to specific IPs or CIDR ranges. Preview only — saved on this
+                  browser, not enforced by the server.
                 </p>
               </div>
               <Textarea

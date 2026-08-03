@@ -35,6 +35,7 @@ import { BillingPage } from '@/features/billing/pages/BillingPage'
 import { IntegrationsPage } from '@/features/integrations/pages/IntegrationsPage'
 import { MeetingRoomPage } from '@/features/meetings/pages/MeetingRoomPage'
 import { PricingPage } from '@/pages/PricingPage'
+import { AppNotFoundPage } from '@/pages/AppNotFoundPage'
 
 export default function App() {
   return (
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="help" element={<HelpPage />} />
           <Route path="templates" element={<TemplatesPage />} />
+          <Route path="*" element={<AppNotFoundPage />} />
         </Route>
       </Route>
 

@@ -15,6 +15,7 @@ import { notificationApi } from '@/services/notificationApi'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { setNotificationsOpen } from '@/store/uiSlice'
 import { cn, formatDate } from '@/utils/cn'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { NotificationItem } from '@/types'
 
 function dayGroupLabel(dateStr?: string) {
@@ -39,10 +40,14 @@ function groupByDay(items: NotificationItem[]) {
 
 function destinationFor(item: NotificationItem) {
   const data = item.data || {}
-  if (data.channelId) return `/app/chat?channelId=${String(data.channelId)}`
+  if (data.channelId) {
+    const base = `/app/chat?channelId=${String(data.channelId)}`
+    return data.messageId ? `${base}&messageId=${String(data.messageId)}` : base
+  }
   if (data.taskId) return `/app/tasks?taskId=${String(data.taskId)}`
-  if (data.meetingId) return `/app/meetings`
+  if (data.meetingId) return `/app/meetings?meetingId=${String(data.meetingId)}`
   if (data.documentId) return `/app/documents/${String(data.documentId)}`
+  if (data.projectId) return `/app/projects/${String(data.projectId)}`
   if (item.type.includes('invite')) return '/app/admin'
   return null
 }
@@ -113,7 +118,13 @@ export function NotificationCenter() {
           {isLoading ? (
             <div className="space-y-2 p-4">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-14 animate-pulse rounded-md bg-muted" />
+                <div key={i} className="flex items-start gap-3 rounded-md border border-border/60 p-3">
+                  <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-3.5 w-[70%]" />
+                    <Skeleton className="h-3 w-[45%]" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : items.length === 0 ? (

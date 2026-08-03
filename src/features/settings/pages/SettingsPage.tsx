@@ -22,6 +22,7 @@ import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -283,8 +284,8 @@ export function SettingsPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
-        <nav className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+      <div className="grid items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-stretch">
+        <nav className="ts-module-rail flex min-h-[12rem] gap-1 overflow-x-auto p-2 lg:sticky lg:top-2 lg:min-h-[calc(100dvh-7.5rem)] lg:flex-col lg:self-stretch lg:overflow-visible">
           {sections
             .filter((s) => s.show)
             .map((s) => (
@@ -293,8 +294,9 @@ export function SettingsPage() {
                 type="button"
                 onClick={() => goToSection(s.id)}
                 className={cn(
-                  'flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground',
-                  section === s.id && 'bg-accent text-foreground',
+                  'flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm font-medium text-muted-foreground transition hover:bg-background/60 hover:text-foreground',
+                  section === s.id &&
+                    'bg-background text-foreground shadow-sm dark:bg-[#243447]',
                 )}
               >
                 <s.icon className="h-4 w-4" />
@@ -303,7 +305,7 @@ export function SettingsPage() {
             ))}
         </nav>
 
-        <div className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-4">
           {section === 'profile' ? (
             <>
               <div className="surface-panel flex flex-col gap-6 p-5 sm:flex-row sm:items-center">
@@ -531,6 +533,9 @@ export function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <Laptop2 className="h-4 w-4 text-muted-foreground" />
                     <h3 className="app-title text-sm">Connected devices</h3>
+                    <Badge variant="secondary" className="text-[10px]">
+                      Preview
+                    </Badge>
                   </div>
                   <Dialog>
                     <DialogTrigger asChild>
@@ -596,7 +601,11 @@ export function SettingsPage() {
                               variant="ghost"
                               size="sm"
                               className="mt-0.5 h-6 text-[11px] text-destructive"
-                              onClick={() => toast.success('Session revoked (stub)')}
+                              onClick={() =>
+                                toast.info('Session revoke is a preview', {
+                                  description: 'Real device sessions are not managed yet.',
+                                })
+                              }
                             >
                               Revoke
                             </Button>
@@ -607,7 +616,8 @@ export function SettingsPage() {
                   ))}
                 </ul>
                 <p className="text-[11px] text-muted-foreground">
-                  Full session management with device fingerprinting is coming soon.
+                  Full session management with device fingerprinting is coming soon (preview list
+                  only).
                 </p>
               </div>
             </div>

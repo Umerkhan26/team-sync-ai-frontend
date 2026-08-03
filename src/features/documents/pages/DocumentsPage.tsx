@@ -25,6 +25,7 @@ import {
 import { TiptapEditor } from '@/features/documents/components/TiptapEditor'
 import { documentApi } from '@/services/documentApi'
 import { useAppSelector } from '@/store'
+import { usePermissions } from '@/hooks/usePermissions'
 import { formatDate, formatDateTime, getErrorMessage } from '@/utils/cn'
 import { orgApi } from '@/services/orgApi'
 import type { Membership, User } from '@/types'
@@ -53,11 +54,12 @@ export function DocumentsPage() {
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { can } = usePermissions()
 
   const query = useQuery({
     queryKey: ['documents', orgId],
     queryFn: () => documentApi.list({ limit: 50 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('documents:read'),
   })
 
   const form = useForm<CreateForm>({
@@ -66,6 +68,7 @@ export function DocumentsPage() {
   })
 
   useEffect(() => {
+    if (!can('documents:create')) return
     if (searchParams.get('open') !== '1') return
     form.reset({ title: searchParams.get('title') || '' })
     setOpen(true)
@@ -93,6 +96,15 @@ export function DocumentsPage() {
 
   const documents = query.data?.data.items ?? []
 
+  if (!can('documents:read')) {
+    return (
+      <EmptyState
+        title="No document access"
+        description="Your role cannot view documents in this workspace."
+      />
+    )
+  }
+
   return (
     <div>
       <PageHeader
@@ -100,25 +112,27 @@ export function DocumentsPage() {
         title="Documents"
         description="Specs, notes, and plans — versioned and searchable."
         actions={
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" />
-            New document
-          </Button>
+          can('documents:create') ? (
+            <Button onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New document
+            </Button>
+          ) : null
         }
       />
 
       {!orgId ? (
         <EmptyState title="Select an organization" />
       ) : query.isLoading ? (
-        <LoadingState />
+        <LoadingState variant="page" rows={5} />
       ) : query.isError ? (
         <ErrorState onRetry={() => void query.refetch()} />
       ) : documents.length === 0 ? (
         <EmptyState
           title="No documents"
           description="Create a document to capture shared knowledge."
-          actionLabel="Create document"
-          onAction={() => setOpen(true)}
+          actionLabel={can('documents:create') ? 'Create document' : undefined}
+          onAction={can('documents:create') ? () => setOpen(true) : undefined}
         />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -197,6 +211,7 @@ export function DocumentEditorPage() {
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { can } = usePermissions()
   const [title, setTitle] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(false)
@@ -209,7 +224,7 @@ export function DocumentEditorPage() {
   const query = useQuery({
     queryKey: ['documents', orgId, documentId],
     queryFn: () => documentApi.get(documentId),
-    enabled: Boolean(orgId && documentId),
+    enabled: Boolean(orgId && documentId) && can('documents:read'),
   })
 
   const versionsQuery = useQuery({
@@ -279,6 +294,15 @@ export function DocumentEditorPage() {
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
+
+  if (!can('documents:read')) {
+    return (
+      <EmptyState
+        title="No document access"
+        description="Your role cannot view documents in this workspace."
+      />
+    )
+  }
 
   if (query.isLoading) return <PageLoading />
   if (query.isError || !query.data) {
@@ -354,7 +378,7 @@ export function DocumentEditorPage() {
             members={orgMembers}
           />
         ) : historyOpen ? (
-          <aside className="surface-panel h-fit p-4">
+          <aside className="ts-module-rail h-fit space-y-3 p-4">
             <h3 className="mb-3 text-sm font-semibold">Version history</h3>
             {versionsQuery.isLoading ? (
               <LoadingState rows={3} />

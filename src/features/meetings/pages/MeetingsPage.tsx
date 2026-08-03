@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -168,6 +168,7 @@ const emptyValues: MeetingForm = {
 }
 
 export function MeetingsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editing, setEditing] = useState<Meeting | null>(null)
   const [removeId, setRemoveId] = useState<string | null>(null)
@@ -175,6 +176,7 @@ export function MeetingsPage() {
   const [targetProjectId, setTargetProjectId] = useState('')
   const [rsvpVersion, setRsvpVersion] = useState(0)
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
   const currentUser = useAppSelector((s) => s.auth.user)
   const queryClient = useQueryClient()
@@ -234,6 +236,32 @@ export function MeetingsPage() {
   const meetings = [...(meetingsQuery.data?.data.items ?? [])].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   )
+
+  useEffect(() => {
+    if (searchParams.get('open') === '1' && can('meetings:create')) {
+      setEditing(null)
+      setDrawerOpen(true)
+      searchParams.delete('open')
+      setSearchParams(searchParams, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const meetingId = searchParams.get('meetingId')
+    if (!meetingId || meetingsQuery.isLoading) return
+    const found = meetings.find((m) => m.id === meetingId)
+    if (found) {
+      setHighlightId(found.id)
+      if (can('meetings:update')) {
+        setEditing(found)
+        setDrawerOpen(true)
+      }
+    }
+    searchParams.delete('meetingId')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingsQuery.isLoading, meetings.length])
 
   const weekDays = useMemo(() => weekDaysFromToday(), [])
   const today = new Date()
@@ -378,7 +406,11 @@ export function MeetingsPage() {
     return (
     <li
       key={meeting.id}
-      className="surface-panel p-4 shadow-sm transition-all duration-150 hover:border-primary/30 hover:shadow-md"
+      id={`meeting-${meeting.id}`}
+      className={cn(
+        'surface-panel p-4 shadow-sm transition-all duration-150 hover:border-primary/30 hover:shadow-md',
+        highlightId === meeting.id && 'border-primary/50 ring-2 ring-primary/30',
+      )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 gap-3">
@@ -545,7 +577,7 @@ export function MeetingsPage() {
       {!orgId ? (
         <EmptyState title="Select an organization" />
       ) : meetingsQuery.isLoading ? (
-        <LoadingState rows={4} />
+        <LoadingState variant="page" rows={4} />
       ) : meetingsQuery.isError ? (
         <ErrorState onRetry={() => void meetingsQuery.refetch()} />
       ) : meetings.length === 0 ? (

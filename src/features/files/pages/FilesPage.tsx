@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -137,6 +138,7 @@ function matchesMimeChip(file: FileAsset, chip: string) {
 }
 
 export function FilesPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const inputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
@@ -205,6 +207,16 @@ export function FilesPage() {
   }
 
   const allFiles = filesQuery.data?.data.items ?? []
+
+  useEffect(() => {
+    const fileId = searchParams.get('fileId')
+    if (!fileId || filesQuery.isLoading) return
+    const found = allFiles.find((f) => f.id === fileId)
+    if (found) setPreviewFile(found)
+    searchParams.delete('fileId')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesQuery.isLoading, allFiles.length])
 
   const pathFolders = useMemo(() => {
     const folders = new Set<string>()
@@ -669,7 +681,7 @@ export function FilesPage() {
       ) : null}
 
       {filesQuery.isLoading ? (
-        <LoadingState rows={4} />
+        <LoadingState variant="page" rows={4} />
       ) : filesQuery.isError ? (
         <ErrorState onRetry={() => void filesQuery.refetch()} />
       ) : files.length === 0 ? (
@@ -757,9 +769,12 @@ export function FilesPage() {
           {versionFile ? (
             <>
               <SheetHeader>
-                <SheetTitle>Version history</SheetTitle>
+                <SheetTitle className="flex items-center gap-2">
+                  Version history
+                  <Badge variant="secondary">Preview</Badge>
+                </SheetTitle>
                 <SheetDescription className="truncate">
-                  {fileDisplayName(versionFile.fileName)}
+                  {fileDisplayName(versionFile.fileName)} — demo versions until server-side history ships.
                 </SheetDescription>
               </SheetHeader>
               <ul className="space-y-2 p-5">

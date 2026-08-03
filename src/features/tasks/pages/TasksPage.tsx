@@ -135,13 +135,13 @@ export function TasksPage() {
   const projectsQuery = useQuery({
     queryKey: ['projects', orgId],
     queryFn: () => projectApi.list({ limit: 100 }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('tasks:read'),
   })
 
   const membersQuery = useQuery({
     queryKey: ['members', orgId],
     queryFn: () => orgApi.listMembers(orgId!),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('tasks:read'),
   })
 
   const tasksQuery = useQuery({
@@ -151,7 +151,7 @@ export function TasksPage() {
         limit: 100,
         projectId: projectFilter || undefined,
       }),
-    enabled: Boolean(orgId),
+    enabled: Boolean(orgId) && can('tasks:read'),
   })
 
   const form = useForm<FormValues>({
@@ -272,6 +272,17 @@ export function TasksPage() {
     setSearchParams(searchParams, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects.length])
+
+  useEffect(() => {
+    const deepId = searchParams.get('taskId') || searchParams.get('highlight')
+    if (!deepId) return
+    dispatch(setActiveTaskId(deepId))
+    searchParams.delete('taskId')
+    searchParams.delete('highlight')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get('taskId'), searchParams.get('highlight')])
+
   const tasks = useMemo(() => {
     let list =
       view === 'mine'
@@ -550,6 +561,15 @@ export function TasksPage() {
     { id: 'mine', label: 'My Tasks', icon: UserRound },
   ]
 
+  if (!can('tasks:read')) {
+    return (
+      <EmptyState
+        title="No task access"
+        description="Your role cannot view tasks in this workspace."
+      />
+    )
+  }
+
   return (
     <div>
       <PageHeader
@@ -746,7 +766,7 @@ export function TasksPage() {
       {!orgId ? (
         <EmptyState title="Select an organization" description="Choose a workspace to view its tasks." />
       ) : tasksQuery.isLoading ? (
-        <LoadingState rows={6} />
+        <LoadingState variant="board" />
       ) : tasksQuery.isError ? (
         <ErrorState onRetry={() => void tasksQuery.refetch()} />
       ) : projects.length === 0 ? (
