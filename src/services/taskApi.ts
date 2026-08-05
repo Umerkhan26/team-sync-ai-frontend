@@ -1,5 +1,5 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from './api'
-import type { Task, TaskPriority, TaskStatus } from '@/types'
+﻿import { apiDelete, apiGet, apiPatch, apiPost } from './api'
+import type { Task, TaskCustomField, TaskPriority, TaskStatus } from '@/types'
 
 export const taskApi = {
   list(params?: {
@@ -23,6 +23,7 @@ export const taskApi = {
     assigneeIds?: string[]
     dueDate?: string | null
     labels?: string[]
+    customFields?: TaskCustomField[]
     parentTaskId?: string | null
     blockedByTaskIds?: string[]
   }) {
@@ -37,6 +38,7 @@ export const taskApi = {
       assigneeIds: string[]
       dueDate: string | null
       labels: string[]
+      customFields: TaskCustomField[]
       parentTaskId: string | null
       blockedByTaskIds: string[]
     }>,

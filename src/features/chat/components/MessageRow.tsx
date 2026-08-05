@@ -1,4 +1,4 @@
-import { Bookmark, ListTodo, MessageCircle, Pin } from 'lucide-react'
+import { Bell, Bookmark, ListTodo, MessageCircle, Pin } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { PresenceDot } from '@/components/shared/PresenceDot'
 import { ReactionBar } from '@/features/chat/components/ReactionBar'
@@ -84,17 +84,30 @@ export function MessageRow({
       className="group relative flex min-w-0 gap-3 rounded-lg px-2.5 py-2 transition ts-row-hover"
     >
       <div className="relative mt-0.5 shrink-0">
-        <Avatar className="h-9 w-9">
-          <AvatarImage src={author?.avatarUrl || undefined} alt="" />
-          <AvatarFallback className="text-xs">{getInitials(author?.name || 'U')}</AvatarFallback>
-        </Avatar>
-        <PresenceDot status={status} className="absolute bottom-0 right-0" size="md" />
+        {taskMeta ? (
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-300">
+            <Bell className="h-4 w-4" />
+          </div>
+        ) : (
+          <>
+            <Avatar className="h-9 w-9">
+              <AvatarImage src={author?.avatarUrl || undefined} alt="" />
+              <AvatarFallback className="text-xs">{getInitials(author?.name || 'U')}</AvatarFallback>
+            </Avatar>
+            <PresenceDot status={status} className="absolute bottom-0 right-0" size="md" />
+          </>
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="text-[13.5px] font-semibold text-foreground">
-            {author?.name || 'Member'}
+            {taskMeta ? 'NotificationBot' : author?.name || 'Member'}
           </span>
+          {taskMeta ? (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              APP
+            </span>
+          ) : null}
           <span className="text-[11px] text-muted-foreground">{formatDateTime(message.createdAt)}</span>
           {message.editedAt ? (
             <span className="text-[10px] text-muted-foreground">(edited)</span>

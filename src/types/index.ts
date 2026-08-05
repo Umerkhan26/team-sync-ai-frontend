@@ -288,6 +288,12 @@ export interface AuditLog {
   createdAt?: string
 }
 
+export interface TaskCustomField {
+  key: string
+  label: string
+  value: string
+}
+
 export interface Task {
   id: string
   organizationId: string
@@ -301,6 +307,7 @@ export interface Task {
   reporterId: string
   dueDate?: string | null
   labels: string[]
+  customFields?: TaskCustomField[]
   parentTaskId?: string | null
   blockedByTaskIds?: string[]
   completedAt?: string | null
@@ -344,6 +351,7 @@ export interface MessageTaskCardMeta {
   priority?: string
   assigneeIds?: string[]
   dueDate?: string | null
+  customFields?: TaskCustomField[]
   event?: 'created' | 'updated' | 'status' | 'assigned'
 }
 

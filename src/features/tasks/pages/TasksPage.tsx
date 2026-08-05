@@ -16,6 +16,7 @@ import {
   Plus,
   Rows3,
   GanttChart,
+  Trash2,
   UserRound,
 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -45,6 +46,7 @@ import {
 import { orgApi } from '@/services/orgApi'
 import { projectApi } from '@/services/projectApi'
 import { taskApi } from '@/services/taskApi'
+import { teamApi } from '@/services/teamApi'
 import { getAssigneeLanes, taskInAssigneeLane } from '@/features/tasks/utils/assigneeLanes'
 import { averageCycleTimeMs, formatCycleTime } from '@/features/tasks/utils/cycleTime'
 import {
@@ -56,7 +58,7 @@ import {
 import { useAppDispatch, useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
 import { setActiveTaskId } from '@/store/uiSlice'
-import { KANBAN_COLUMNS, type Membership, type Task, type TaskPriority, type TaskStatus, type User } from '@/types'
+import { KANBAN_COLUMNS, type Membership, type Task, type TaskCustomField, type TaskPriority, type TaskStatus, type User } from '@/types'
 import { cn, getErrorMessage, getInitials, getRelativeDueLabel, isOverdue } from '@/utils/cn'
 import {
   deleteSavedView,
@@ -70,10 +72,22 @@ const schema = z.object({
   description: z.string().max(20000).optional().or(z.literal('')),
   priority: z.enum(['low', 'medium', 'high', 'urgent']),
   projectId: z.string().min(1, 'Select a project'),
+  dueDate: z.string().optional().or(z.literal('')),
 })
 
 type FormValues = z.infer<typeof schema>
 type ViewMode = 'board' | 'list' | 'calendar' | 'mine' | 'swimlanes' | 'timeline'
+
+const CUSTOM_FIELD_PRESETS = ['Team', 'Client', 'Dates'] as const
+
+function fieldKeyFromLabel(label: string) {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 80)
+}
 
 function memberUser(membership: Membership): User | null {
   return typeof membership.userId === 'object' ? (membership.userId as User) : null
@@ -106,6 +120,10 @@ export function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const projectFilter = searchParams.get('projectId') || ''
   const [open, setOpen] = useState(false)
+  const [createAssigneeIds, setCreateAssigneeIds] = useState<string[]>([])
+  const [customFields, setCustomFields] = useState<TaskCustomField[]>([])
+  const [newFieldLabel, setNewFieldLabel] = useState('')
+  const [newFieldValue, setNewFieldValue] = useState('')
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>('board')
   const [calendarAnchor, setCalendarAnchor] = useState(() => new Date())
@@ -144,6 +162,12 @@ export function TasksPage() {
     enabled: Boolean(orgId) && can('tasks:read'),
   })
 
+  const teamsQuery = useQuery({
+    queryKey: ['teams', orgId],
+    queryFn: () => teamApi.list({ limit: 100 }),
+    enabled: Boolean(orgId) && open && can('tasks:create'),
+  })
+
   const tasksQuery = useQuery({
     queryKey: ['tasks', orgId, projectFilter || 'all'],
     queryFn: () =>
@@ -161,8 +185,36 @@ export function TasksPage() {
       description: '',
       priority: 'medium',
       projectId: projectFilter || '',
+      dueDate: '',
     },
   })
+
+  const resetCreateForm = () => {
+    form.reset({
+      title: '',
+      description: '',
+      priority: 'medium',
+      projectId: projectFilter || '',
+      dueDate: '',
+    })
+    setCreateAssigneeIds([])
+    setCustomFields([])
+    setNewFieldLabel('')
+    setNewFieldValue('')
+  }
+
+  const addCustomField = (label: string, value: string) => {
+    const trimmedLabel = label.trim()
+    const trimmedValue = value.trim()
+    if (!trimmedLabel || !trimmedValue) return
+    const key = fieldKeyFromLabel(trimmedLabel) || `field_${customFields.length + 1}`
+    setCustomFields((prev) => {
+      const without = prev.filter((f) => f.key !== key)
+      return [...without, { key, label: trimmedLabel, value: trimmedValue }]
+    })
+    setNewFieldLabel('')
+    setNewFieldValue('')
+  }
 
   const createMutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -172,16 +224,14 @@ export function TasksPage() {
         description: values.description || undefined,
         priority: values.priority as TaskPriority,
         status: 'todo',
+        assigneeIds: createAssigneeIds,
+        dueDate: values.dueDate || null,
+        customFields: customFields.filter((f) => f.label.trim() && f.value.trim()),
       }),
     onSuccess: async () => {
       toast.success('Task created')
       setOpen(false)
-      form.reset({
-        title: '',
-        description: '',
-        priority: 'medium',
-        projectId: projectFilter || '',
-      })
+      resetCreateForm()
       await queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -232,6 +282,8 @@ export function TasksPage() {
 
   const allTasks = tasksQuery.data?.data.items ?? []
   const projects = projectsQuery.data?.data.items ?? []
+  const members = membersQuery.data ?? []
+  const teams = teamsQuery.data?.data.items ?? []
 
   const usersById = useMemo(() => {
     const map = new Map<string, User>()
@@ -262,7 +314,10 @@ export function TasksPage() {
         ? (priority as FormValues['priority'])
         : 'medium',
       projectId: projectFilter || projects[0]?.id || '',
+      dueDate: '',
     })
+    setCreateAssigneeIds([])
+    setCustomFields([])
     setOpen(true)
     searchParams.delete('open')
     searchParams.delete('title')
@@ -1002,8 +1057,14 @@ export function TasksPage() {
         </>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) resetCreateForm()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create task</DialogTitle>
           </DialogHeader>
@@ -1038,29 +1099,153 @@ export function TasksPage() {
               <Label htmlFor="title">Title</Label>
               <Input id="title" {...form.register('title')} />
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select
+                  value={form.watch('priority')}
+                  onValueChange={(value) =>
+                    form.setValue('priority', value as FormValues['priority'])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['low', 'medium', 'high', 'urgent'].map((p) => (
+                      <SelectItem key={p} value={p}>
+                        {p}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dueDate">Due date</Label>
+                <Input id="dueDate" type="date" {...form.register('dueDate')} />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select
-                value={form.watch('priority')}
-                onValueChange={(value) =>
-                  form.setValue('priority', value as FormValues['priority'])
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {['low', 'medium', 'high', 'urgent'].map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Assignees</Label>
+              <div className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                {members
+                  .map((m) => memberUser(m))
+                  .filter(Boolean)
+                  .map((user) => {
+                    const u = user!
+                    const checked = createAssigneeIds.includes(u.id)
+                    return (
+                      <label
+                        key={u.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-accent/60"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(on) => {
+                            setCreateAssigneeIds((prev) =>
+                              on ? [...prev, u.id] : prev.filter((id) => id !== u.id),
+                            )
+                          }}
+                        />
+                        <span className="min-w-0 truncate">{u.name || u.email}</span>
+                      </label>
+                    )
+                  })}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea id="description" {...form.register('description')} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Custom fields</Label>
+                <div className="flex flex-wrap gap-1">
+                  {CUSTOM_FIELD_PRESETS.map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      onClick={() => {
+                        setNewFieldLabel(preset)
+                        if (preset === 'Team') {
+                          const first = teams[0]
+                          if (first) setNewFieldValue(first.name)
+                        }
+                      }}
+                    >
+                      + {preset}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              {customFields.length > 0 ? (
+                <ul className="space-y-1.5 rounded-md border border-border p-2">
+                  {customFields.map((field) => (
+                    <li
+                      key={field.key}
+                      className="flex items-start justify-between gap-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">{field.label}</p>
+                        <p className="truncate text-muted-foreground">{field.value}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                        onClick={() =>
+                          setCustomFields((prev) => prev.filter((f) => f.key !== field.key))
+                        }
+                        aria-label={`Remove ${field.label}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Add Team, Client, or any field — they show on channel task cards like Slack.
+                </p>
+              )}
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <Input
+                  placeholder="Field label"
+                  value={newFieldLabel}
+                  onChange={(e) => setNewFieldLabel(e.target.value)}
+                />
+                {newFieldLabel.trim().toLowerCase() === 'team' && teams.length > 0 ? (
+                  <Select value={newFieldValue || undefined} onValueChange={setNewFieldValue}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teams.map((team) => (
+                        <SelectItem key={team.id} value={team.name}>
+                          {team.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    placeholder="Value"
+                    value={newFieldValue}
+                    onChange={(e) => setNewFieldValue(e.target.value)}
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={!newFieldLabel.trim() || !newFieldValue.trim()}
+                  onClick={() => addCustomField(newFieldLabel, newFieldValue)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
+                </Button>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>

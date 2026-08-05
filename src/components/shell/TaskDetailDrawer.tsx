@@ -173,6 +173,27 @@ export function TaskDetailDrawer() {
                 </p>
               </section>
 
+              {(task.customFields?.length || 0) > 0 ? (
+                <>
+                  <Separator />
+                  <section className="space-y-2">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Custom fields
+                    </h3>
+                    <dl className="space-y-1.5 text-sm">
+                      {task.customFields!.map((field) => (
+                        <div key={field.key} className="flex gap-2">
+                          <dt className="w-24 shrink-0 font-medium text-muted-foreground">
+                            {field.label}
+                          </dt>
+                          <dd className="min-w-0 break-words text-foreground/90">{field.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                </>
+              ) : null}
+
               <Separator />
 
               <section className="space-y-2">
