@@ -250,6 +250,9 @@ export interface IntegrationCatalogItem {
   name: string
   description: string
   category: string
+  authMode?: 'oauth' | 'credentials' | 'config' | 'coming_soon'
+  oauthReady?: boolean
+  connectReady?: boolean
 }
 
 export interface IntegrationConnection {
@@ -261,6 +264,8 @@ export interface IntegrationConnection {
   config?: Record<string, unknown>
   connectedBy?: string | null
   lastSyncedAt?: string | null
+  errorMessage?: string | null
+  hasCredentials?: boolean
   createdAt?: string
   updatedAt?: string
 }
