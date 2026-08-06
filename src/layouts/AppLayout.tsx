@@ -207,7 +207,7 @@ export function AppLayout() {
     cn(
       'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-[color:var(--ts-sidebar-muted)] transition-all duration-150 hover:bg-[color:var(--ts-sidebar-hover)] hover:text-[color:var(--ts-sidebar-foreground)]',
       isActive &&
-        'bg-[color:var(--ts-sidebar-active)] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]',
+        'bg-[color:var(--ts-sidebar-active)] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-[#7cc4ff]',
       collapsed && 'justify-center px-0',
     )
 
@@ -291,8 +291,8 @@ export function AppLayout() {
           sidebarOpen ? 'w-[240px]' : 'w-[64px]',
         )}
       >
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[color:var(--ts-sidebar-border)] px-3">
-          <img src="/brand/logo-mark.png" alt="TeamSync AI" className="h-7 w-7 rounded-md" />
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-[color:var(--ts-sidebar-border)] bg-black/20 px-3">
+          <img src="/brand/logo-mark.png" alt="TeamSync AI" className="h-7 w-7 rounded-md ring-1 ring-white/10" />
           {sidebarOpen ? (
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">TeamSync AI</p>
@@ -367,7 +367,7 @@ export function AppLayout() {
             <Button
               variant="outline"
               size="sm"
-              className="hidden h-8 gap-2 text-muted-foreground sm:inline-flex"
+              className="ts-chrome-control hidden h-8 gap-2 sm:inline-flex"
               onClick={() => dispatch(setCommandOpen(true))}
             >
               <Search className="h-3.5 w-3.5" />

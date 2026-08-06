@@ -51,7 +51,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        'mb-2 flex min-h-9 items-center justify-between gap-3',
+        'mb-3 flex min-h-10 items-center justify-between gap-3 border-b border-border/70 pb-2.5',
         className,
       )}
     >

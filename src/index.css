@@ -40,81 +40,81 @@
 
 :root,
 [data-theme="light"] {
-  --ts-background: hsl(206 28% 97%);
-  --ts-foreground: hsl(207 40% 11%);
-  --ts-muted: hsl(206 24% 94%);
-  --ts-muted-foreground: hsl(207 14% 42%);
+  --ts-background: hsl(214 28% 95%);
+  --ts-foreground: hsl(218 34% 12%);
+  --ts-muted: hsl(214 22% 91%);
+  --ts-muted-foreground: hsl(215 12% 40%);
   --ts-card: hsl(0 0% 100%);
-  --ts-card-foreground: hsl(207 40% 11%);
+  --ts-card-foreground: hsl(218 34% 12%);
   --ts-popover: hsl(0 0% 100%);
-  --ts-popover-foreground: hsl(207 40% 11%);
-  --ts-border: hsl(207 22% 89%);
-  --ts-input: hsl(207 22% 89%);
-  --ts-ring: hsl(204 61% 40%);
-  --ts-primary: hsl(204 62% 28%);
-  --ts-primary-foreground: hsl(210 45% 98%);
-  --ts-secondary: hsl(205 30% 93%);
-  --ts-secondary-foreground: hsl(204 45% 18%);
-  --ts-accent: hsl(204 55% 94%);
-  --ts-accent-foreground: hsl(204 62% 24%);
+  --ts-popover-foreground: hsl(218 34% 12%);
+  --ts-border: hsl(214 18% 84%);
+  --ts-input: hsl(210 24% 97%);
+  --ts-ring: hsl(204 78% 40%);
+  --ts-primary: hsl(204 82% 32%);
+  --ts-primary-foreground: hsl(210 40% 98%);
+  --ts-secondary: hsl(214 20% 92%);
+  --ts-secondary-foreground: hsl(218 28% 18%);
+  --ts-accent: hsl(204 70% 93%);
+  --ts-accent-foreground: hsl(204 72% 22%);
   --ts-destructive: hsl(0 72% 48%);
   --ts-destructive-foreground: hsl(0 0% 100%);
-  --ts-success: hsl(152 55% 36%);
+  --ts-success: hsl(152 55% 34%);
   --ts-success-foreground: hsl(0 0% 100%);
-  --ts-warning: hsl(38 92% 45%);
+  --ts-warning: hsl(38 92% 44%);
   --ts-warning-foreground: hsl(0 0% 100%);
-  --ts-info: hsl(204 70% 53%);
+  --ts-info: hsl(204 78% 48%);
   --ts-info-foreground: hsl(0 0% 100%);
-  --ts-brand-secondary: hsl(204 61% 40%);
-  --ts-sidebar: hsl(205 32% 11%);
-  --ts-sidebar-foreground: hsl(206 25% 92%);
-  --ts-sidebar-muted: hsl(206 14% 58%);
-  --ts-sidebar-hover: hsl(205 26% 17%);
-  --ts-sidebar-active: hsl(204 45% 24%);
-  --ts-sidebar-border: hsl(205 20% 17%);
+  --ts-brand-secondary: hsl(199 80% 38%);
+  --ts-sidebar: hsl(222 42% 9%);
+  --ts-sidebar-foreground: hsl(210 33% 96%);
+  --ts-sidebar-muted: hsl(215 14% 62%);
+  --ts-sidebar-hover: hsl(220 34% 14%);
+  --ts-sidebar-active: hsl(204 72% 30%);
+  --ts-sidebar-border: hsl(220 28% 15%);
   --ts-topbar: hsl(0 0% 100%);
   --ts-elevated: hsl(0 0% 100%);
 }
 
 /*
- * Dark elevation — large L* steps so shell regions never look like one plane.
- * sidebar ≈ #07090e → canvas ≈ #15202b → topbar ≈ #1c2936 → card ≈ #243447
+ * Dark layers (must read as separate planes):
+ * chrome/sidebar+topbar → recessed rails → canvas → cards → popovers
  */
 [data-theme="dark"] {
-  --ts-background: #15202b;
-  --ts-foreground: #f1f5f9;
-  --ts-muted: #1a2734;
-  --ts-muted-foreground: #94a3b8;
-  --ts-card: #243447;
-  --ts-card-foreground: #f1f5f9;
-  --ts-popover: #2a3a4f;
-  --ts-popover-foreground: #f1f5f9;
-  --ts-border: #3d4f63;
-  --ts-input: #1e2d3d;
-  --ts-ring: #3b9eff;
-  --ts-primary: #3b9eff;
-  --ts-primary-foreground: #f8fafc;
-  --ts-secondary: #1e2d3d;
-  --ts-secondary-foreground: #e2e8f0;
-  --ts-accent: #1a3348;
-  --ts-accent-foreground: #93c5fd;
-  --ts-destructive: #ef4444;
+  --ts-background: #162238;
+  --ts-foreground: #f3f6fb;
+  --ts-muted: #0e1728;
+  --ts-muted-foreground: #9aa8bd;
+  --ts-card: #1f2d45;
+  --ts-card-foreground: #f3f6fb;
+  --ts-popover: #273651;
+  --ts-popover-foreground: #f3f6fb;
+  --ts-border: #3a4d6b;
+  --ts-input: #0c1422;
+  --ts-ring: #5eb0ff;
+  --ts-primary: #4ea8ff;
+  --ts-primary-foreground: #061018;
+  --ts-secondary: #18253c;
+  --ts-secondary-foreground: #e8eef8;
+  --ts-accent: #14324d;
+  --ts-accent-foreground: #b6dcff;
+  --ts-destructive: #f04343;
   --ts-destructive-foreground: #ffffff;
   --ts-success: #22a06b;
   --ts-success-foreground: #ffffff;
   --ts-warning: #eab308;
   --ts-warning-foreground: #0f172a;
   --ts-info: #38bdf8;
-  --ts-info-foreground: #ffffff;
-  --ts-brand-secondary: #60a5fa;
-  --ts-sidebar: #07090e;
-  --ts-sidebar-foreground: #f1f5f9;
-  --ts-sidebar-muted: #8b9bb0;
-  --ts-sidebar-hover: #121821;
-  --ts-sidebar-active: #1a4f7a;
-  --ts-sidebar-border: #1a2330;
-  --ts-topbar: #1c2936;
-  --ts-elevated: #2c3e52;
+  --ts-info-foreground: #061018;
+  --ts-brand-secondary: #67c3ff;
+  --ts-sidebar: #05080f;
+  --ts-sidebar-foreground: #f3f6fb;
+  --ts-sidebar-muted: #8b9bb3;
+  --ts-sidebar-hover: #121a2a;
+  --ts-sidebar-active: #0d3f6d;
+  --ts-sidebar-border: #1a2438;
+  --ts-topbar: #0a1220;
+  --ts-elevated: #283754;
 }
 
 @layer base {
@@ -155,9 +155,9 @@
 
   [data-theme="dark"] body.surface-marketing {
     background-image:
-      radial-gradient(ellipse 70% 50% at 10% -10%, hsl(186 40% 24% / 0.45), transparent 55%),
-      radial-gradient(ellipse 60% 40% at 90% 0%, hsl(222 40% 22% / 0.5), transparent 50%),
-      linear-gradient(180deg, #0f1720, #0a1018);
+      radial-gradient(ellipse 70% 50% at 10% -10%, hsl(204 55% 28% / 0.35), transparent 55%),
+      radial-gradient(ellipse 60% 40% at 90% 0%, hsl(222 48% 22% / 0.45), transparent 50%),
+      linear-gradient(180deg, #0a1220, #05080f);
   }
 
   body.surface-app {
@@ -199,21 +199,27 @@
 }
 
 html[data-theme="dark"] .ts-sidebar {
-  background: #07090e !important;
-  border-right: 1px solid #1e2a3a !important;
-  box-shadow: 8px 0 40px -12px rgba(0, 0, 0, 0.85);
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(78, 168, 255, 0.12), transparent 55%),
+    linear-gradient(180deg, #0b1220 0%, #05080f 72%) !important;
+  border-right: 1px solid #1e2b42 !important;
+  box-shadow: 12px 0 40px -20px rgba(0, 0, 0, 0.85);
 }
 
 .ts-topbar {
   background: var(--ts-topbar) !important;
   border-color: var(--ts-border);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+}
+
+html[data-theme="light"] .ts-topbar {
+  box-shadow: 0 1px 0 hsl(214 20% 88%), 0 10px 24px -20px hsl(218 30% 20% / 0.25);
 }
 
 html[data-theme="dark"] .ts-topbar {
-  background: #1c2936 !important;
-  border-bottom: 1px solid #334155 !important;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 28px -18px rgba(0, 0, 0, 0.65);
+  background: linear-gradient(180deg, #101a2c 0%, #0a1220 100%) !important;
+  border-bottom: 1px solid #243149 !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .ts-content-frame {
@@ -222,7 +228,10 @@ html[data-theme="dark"] .ts-topbar {
 }
 
 html[data-theme="dark"] .ts-content-frame {
-  background: #15202b !important;
+  background:
+    radial-gradient(70% 45% at 80% -10%, rgba(78, 168, 255, 0.1), transparent 60%),
+    radial-gradient(50% 35% at 0% 0%, rgba(56, 189, 248, 0.05), transparent 55%),
+    var(--ts-background) !important;
 }
 
 .ts-main-canvas {
@@ -237,8 +246,9 @@ html[data-theme="dark"] .ts-content-frame {
 }
 
 html[data-theme="dark"] .ts-module-rail {
-  background: #1a2734;
-  border-color: #314356;
+  background: #0e1728;
+  border-color: #2a3b56;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .ts-module-rail-flat {
@@ -247,8 +257,8 @@ html[data-theme="dark"] .ts-module-rail {
 }
 
 html[data-theme="dark"] .ts-module-rail-flat {
-  background: #1a2734;
-  border-color: #314356;
+  background: #0e1728;
+  border-color: #2a3b56;
 }
 
 .surface-panel {
@@ -256,15 +266,15 @@ html[data-theme="dark"] .ts-module-rail-flat {
   color: var(--ts-card-foreground);
   border: 1px solid var(--ts-border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 1px 2px hsl(210 30% 10% / 0.04);
+  box-shadow: 0 1px 2px hsl(214 30% 12% / 0.05), 0 10px 28px -22px hsl(218 30% 16% / 0.18);
 }
 
 html[data-theme="dark"] .surface-panel {
-  background: #243447 !important;
-  border: 1px solid #3d4f63 !important;
+  background: var(--ts-card) !important;
+  border: 1px solid #3a4d6b !important;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.06) inset,
-    0 14px 36px -18px rgba(0, 0, 0, 0.7);
+    0 1px 0 rgba(255, 255, 255, 0.07) inset,
+    0 16px 40px -22px rgba(0, 0, 0, 0.75);
 }
 
 .surface-elevated {
@@ -274,8 +284,8 @@ html[data-theme="dark"] .surface-panel {
 }
 
 html[data-theme="dark"] .surface-elevated {
-  background: #2c3e52 !important;
-  border-color: #4a5f78 !important;
+  background: var(--ts-elevated) !important;
+  border-color: #4a5f82 !important;
 }
 
 /* Shimmer skeleton — sweeping highlight like Notion / Linear / Slack */
@@ -302,8 +312,8 @@ html[data-theme="dark"] .surface-elevated {
   animation: ts-shimmer-sweep 1.35s ease-in-out infinite;
 }
 
-html[data-theme="dark"] .ts-shimmer {
-  background: #2a3a4c;
+  html[data-theme="dark"] .ts-shimmer {
+  background: #24344d;
 }
 
 html[data-theme="dark"] .ts-shimmer::after {
@@ -400,8 +410,8 @@ html[data-theme="dark"] .ts-shimmer::after {
   }
 
   html[data-theme="dark"] .ts-kanban-column {
-    background: #1a2734;
-    border-color: #314356;
+    background: #0e1728;
+    border-color: #2a3b56;
   }
 
   .ts-chat-shell {
@@ -421,8 +431,11 @@ html[data-theme="dark"] .ts-shimmer::after {
   }
 
   html[data-theme="dark"] .ts-chat-shell {
-    background: #243447;
-    border-color: #3d4f63;
+    background: var(--ts-card);
+    border-color: #3a4d6b;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.06) inset,
+      0 18px 44px -28px rgba(0, 0, 0, 0.7);
   }
 
   .ts-prose-output {
@@ -443,8 +456,8 @@ html[data-theme="dark"] .ts-shimmer::after {
   }
 
   html[data-theme="dark"] .ts-filter-bar {
-    background: #2c3e52;
-    border-color: #3d4f63;
+    background: var(--ts-elevated);
+    border-color: #3a4d6b;
   }
 
   .ts-week-chart {
@@ -477,6 +490,17 @@ html[data-theme="dark"] .ts-shimmer::after {
       opacity: 1;
       transform: none;
     }
+  }
+
+  .ts-chrome-control {
+    border-color: color-mix(in srgb, var(--ts-foreground) 12%, transparent) !important;
+    background: color-mix(in srgb, var(--ts-foreground) 6%, transparent) !important;
+    color: var(--ts-muted-foreground);
+  }
+
+  .ts-chrome-control:hover {
+    background: color-mix(in srgb, var(--ts-foreground) 11%, transparent) !important;
+    color: var(--ts-foreground);
   }
 
   .ts-row-hover:hover {

@@ -33,7 +33,7 @@ export function OrgSwitcher() {
         <Button
           variant="outline"
           size="sm"
-          className="max-w-full justify-between gap-2 bg-card shadow-none"
+          className="ts-chrome-control max-w-full justify-between gap-2 shadow-none"
         >
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate font-medium">{activeOrg?.name || 'Select workspace'}</span>

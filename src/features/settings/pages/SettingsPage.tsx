@@ -294,9 +294,8 @@ export function SettingsPage() {
                 type="button"
                 onClick={() => goToSection(s.id)}
                 className={cn(
-                  'flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm font-medium text-muted-foreground transition hover:bg-background/60 hover:text-foreground',
-                  section === s.id &&
-                    'bg-background text-foreground shadow-sm dark:bg-[#243447]',
+                  'flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm font-medium text-muted-foreground transition hover:bg-card/70 hover:text-foreground',
+                  section === s.id && 'bg-card text-foreground shadow-sm',
                 )}
               >
                 <s.icon className="h-4 w-4" />

@@ -36,7 +36,7 @@ function SheetContent({
       <SheetOverlay />
       <DialogPrimitive.Content
         className={cn(
-          'fixed z-50 flex h-full w-full flex-col border-border bg-card shadow-2xl outline-none transition-transform duration-200 sm:max-w-md',
+          'fixed z-50 flex h-full w-full flex-col border-border bg-[color:var(--ts-elevated)] shadow-2xl outline-none transition-transform duration-200 sm:max-w-md',
           side === 'right' && 'right-0 top-0 border-l',
           side === 'left' && 'left-0 top-0 border-r',
           className,
