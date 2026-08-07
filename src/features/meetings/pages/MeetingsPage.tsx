@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CalendarClock, CircleDot, ClipboardCheck, Link2, Plus, Sparkles, Trash2, Video, Zap } from 'lucide-react'
+import { CalendarClock, ClipboardCheck, Link2, Plus, Sparkles, Trash2, Video, Zap } from 'lucide-react'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -92,34 +92,6 @@ function memberUser(membership: Membership): User | null {
 
 type RsvpStatus = 'going' | 'maybe' | 'declined'
 
-function rsvpKey(meetingId: string, userId: string) {
-  return `ts_meeting_rsvp_${meetingId}_${userId}`
-}
-
-function loadRsvp(meetingId: string, userId: string): RsvpStatus | null {
-  try {
-    const raw = localStorage.getItem(rsvpKey(meetingId, userId))
-    if (raw === 'going' || raw === 'maybe' || raw === 'declined') return raw
-    return null
-  } catch {
-    return null
-  }
-}
-
-function saveRsvp(meetingId: string, userId: string, status: RsvpStatus) {
-  localStorage.setItem(rsvpKey(meetingId, userId), status)
-}
-
-function meetingHasRecording(meeting: Meeting): boolean {
-  const past = new Date(meeting.endsAt).getTime() < Date.now()
-  if (!past) return false
-  let hash = 0
-  for (let i = 0; i < meeting.id.length; i++) {
-    hash = (hash + meeting.id.charCodeAt(i) * (i + 1)) % 10
-  }
-  return hash >= 4
-}
-
 function startOfWeek(date: Date) {
   const d = new Date(date)
   const day = d.getDay()
@@ -174,7 +146,6 @@ export function MeetingsPage() {
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [actionItemsMeeting, setActionItemsMeeting] = useState<Meeting | null>(null)
   const [targetProjectId, setTargetProjectId] = useState('')
-  const [rsvpVersion, setRsvpVersion] = useState(0)
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
@@ -280,9 +251,15 @@ export function MeetingsPage() {
 
   const setRsvp = (meetingId: string, status: RsvpStatus) => {
     if (!currentUser?.id) return
-    saveRsvp(meetingId, currentUser.id, status)
-    setRsvpVersion((v) => v + 1)
-    toast.success(`RSVP: ${status === 'going' ? 'Going' : status === 'maybe' ? 'Maybe' : 'Declined'}`)
+    void meetingApi
+      .setRsvp(meetingId, status)
+      .then(async () => {
+        toast.success(
+          `RSVP: ${status === 'going' ? 'Going' : status === 'maybe' ? 'Maybe' : 'Declined'}`,
+        )
+        await queryClient.invalidateQueries({ queryKey: ['meetings', orgId] })
+      })
+      .catch((error) => toast.error(getErrorMessage(error)))
   }
 
   const saveMutation = useMutation({
@@ -399,9 +376,10 @@ export function MeetingsPage() {
   }
 
   const renderMeeting = (meeting: Meeting) => {
-    const myRsvp = currentUser?.id ? loadRsvp(meeting.id, currentUser.id) : null
-    void rsvpVersion
-    const hasRecording = meetingHasRecording(meeting)
+    const myRsvp =
+      currentUser?.id
+        ? meeting.rsvps?.find((r) => String(r.userId) === currentUser.id)?.status ?? null
+        : null
 
     return (
     <li
@@ -420,12 +398,6 @@ export function MeetingsPage() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate font-medium">{meeting.title}</p>
-              {hasRecording ? (
-                <Badge variant="secondary" className="gap-1 text-[10px]">
-                  <CircleDot className="h-3 w-3 text-destructive" />
-                  Recording
-                </Badge>
-              ) : null}
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {formatDateTime(meeting.startsAt)} – {formatDateTime(meeting.endsAt)}

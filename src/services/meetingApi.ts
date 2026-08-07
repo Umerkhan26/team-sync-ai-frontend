@@ -44,4 +44,9 @@ export const meetingApi = {
   summarize(meetingId: string) {
     return apiPost<{ meeting: Meeting }>(`/meetings/${meetingId}/summarize`)
   },
+  setRsvp(meetingId: string, status: 'going' | 'maybe' | 'declined') {
+    return apiPost<{ meeting: Meeting }>(`/meetings/${meetingId}/rsvp`, { status }).then(
+      (r) => r.meeting,
+    )
+  },
 }

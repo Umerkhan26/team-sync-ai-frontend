@@ -11,8 +11,6 @@ import {
   History,
   Link2,
   List as ListIcon,
-  Shield,
-  ShieldCheck,
   Trash2,
   Upload,
   UploadCloud,
@@ -45,12 +43,8 @@ import { projectApi } from '@/services/projectApi'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
 import { cn, formatDate, formatDateTime, getErrorMessage } from '@/utils/cn'
-import {
-  deleteSavedView,
-  listSavedViews,
-  saveSavedView,
-  type SavedView,
-} from '@/utils/savedViews'
+import type { SavedView } from '@/utils/savedViews'
+import { savedViewApi } from '@/services/savedViewApi'
 import type { FileAsset } from '@/types'
 
 function formatBytes(bytes: number) {
@@ -72,39 +66,6 @@ function fileFolderPath(fileName: string): string {
 function fileDisplayName(fileName: string): string {
   const slash = fileName.lastIndexOf('/')
   return slash >= 0 ? fileName.slice(slash + 1) : fileName
-}
-
-function hashFileId(fileId: string): number {
-  let hash = 0
-  for (let i = 0; i < fileId.length; i++) {
-    hash = (hash + fileId.charCodeAt(i) * (i + 1)) % 100
-  }
-  return hash
-}
-
-function virusScanStatus(fileId: string): 'clean' | 'scanning' {
-  return hashFileId(fileId) > 82 ? 'scanning' : 'clean'
-}
-
-interface FakeFileVersion {
-  id: string
-  label: string
-  createdAt: string
-  sizeLabel: string
-}
-
-function fakeFileVersions(file: FileAsset): FakeFileVersion[] {
-  const base = new Date(file.createdAt || Date.now())
-  const sizes = [file.bytes, Math.round(file.bytes * 0.92), Math.round(file.bytes * 0.85)]
-  return ['Current', 'Previous upload', 'Initial upload'].map((label, i) => {
-    const date = new Date(base.getTime() - i * 86400000 * 3)
-    return {
-      id: `${file.id}-v${3 - i}`,
-      label,
-      createdAt: date.toISOString(),
-      sizeLabel: formatBytes(sizes[i]!),
-    }
-  })
 }
 
 function copyFileShareUrl(file: FileAsset) {
@@ -147,6 +108,7 @@ export function FilesPage() {
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [previewFile, setPreviewFile] = useState<FileAsset | null>(null)
   const [versionFile, setVersionFile] = useState<FileAsset | null>(null)
+  const versionInputRef = useRef<HTMLInputElement>(null)
   const [groupByFolder, setGroupByFolder] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
@@ -157,10 +119,15 @@ export function FilesPage() {
   const [savedViews, setSavedViews] = useState<SavedView[]>([])
   const dragCounter = useRef(0)
 
+  const savedViewsQuery = useQuery({
+    queryKey: ['saved-views', orgId, 'files'],
+    queryFn: () => savedViewApi.list('files'),
+    enabled: Boolean(orgId),
+  })
+
   useEffect(() => {
-    if (!orgId) return
-    setSavedViews(listSavedViews(orgId, 'files'))
-  }, [orgId])
+    setSavedViews(savedViewsQuery.data ?? [])
+  }, [savedViewsQuery.data])
 
   const projectsQuery = useQuery({
     queryKey: ['projects', orgId, 'files-filter'],
@@ -197,6 +164,36 @@ export function FilesPage() {
       void queryClient.invalidateQueries({ queryKey: ['files', orgId] })
     },
     onError: (error) => toast.error(getErrorMessage(error, 'Delete failed')),
+  })
+
+  const versionsQuery = useQuery({
+    queryKey: ['file-versions', orgId, versionFile?.id],
+    queryFn: () => fileApi.listVersions(versionFile!.id),
+    enabled: Boolean(orgId && versionFile?.id),
+  })
+
+  const uploadVersionMutation = useMutation({
+    mutationFn: ({ fileId, file }: { fileId: string; file: File }) =>
+      fileApi.uploadVersion(fileId, file),
+    onSuccess: (updated) => {
+      toast.success(`Uploaded version ${updated.version ?? ''}`)
+      setVersionFile(updated)
+      void queryClient.invalidateQueries({ queryKey: ['files', orgId] })
+      void queryClient.invalidateQueries({ queryKey: ['file-versions', orgId, updated.id] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error, 'Version upload failed')),
+  })
+
+  const restoreVersionMutation = useMutation({
+    mutationFn: ({ fileId, versionId }: { fileId: string; versionId: string }) =>
+      fileApi.restoreVersion(fileId, versionId),
+    onSuccess: (updated) => {
+      toast.success(`Restored as version ${updated.version ?? ''}`)
+      setVersionFile(updated)
+      void queryClient.invalidateQueries({ queryKey: ['files', orgId] })
+      void queryClient.invalidateQueries({ queryKey: ['file-versions', orgId, updated.id] })
+    },
+    onError: (error) => toast.error(getErrorMessage(error, 'Restore failed')),
   })
 
   const uploadFiles = (fileList: FileList | null) => {
@@ -279,21 +276,6 @@ export function FilesPage() {
   const canUpload = can('files:upload')
   const projects = projectsQuery.data?.data.items ?? []
 
-  const renderVirusBadge = (fileId: string) => {
-    const status = virusScanStatus(fileId)
-    return status === 'clean' ? (
-      <Badge variant="secondary" className="gap-1 text-[10px] text-emerald-700 dark:text-emerald-400">
-        <ShieldCheck className="h-3 w-3" />
-        Clean
-      </Badge>
-    ) : (
-      <Badge variant="outline" className="gap-1 text-[10px] text-amber-700 dark:text-amber-400">
-        <Shield className="h-3 w-3 animate-pulse" />
-        Scanning
-      </Badge>
-    )
-  }
-
   const renderFileGridCard = (file: FileAsset) => (
     <div
       key={file.id}
@@ -324,12 +306,11 @@ export function FilesPage() {
             {fileDisplayName(file.fileName)}
           </p>
           <Badge variant="outline" className="shrink-0 text-[10px]">
-            v1
+            v{file.version ?? 1}
           </Badge>
         </div>
         <div className="flex items-center justify-between gap-1">
           <p className="text-[10px] text-muted-foreground">{formatBytes(file.bytes)}</p>
-          {renderVirusBadge(file.id)}
         </div>
       </div>
       <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -398,9 +379,8 @@ export function FilesPage() {
       </button>
       <div className="flex items-center gap-2">
         <Badge variant="outline" className="text-[10px]">
-          v1
+          v{file.version ?? 1}
         </Badge>
-        {renderVirusBadge(file.id)}
         <Badge variant="secondary">{file.mimeType.split('/')[0]}</Badge>
         <Button
           variant="ghost"
@@ -582,14 +562,21 @@ export function FilesPage() {
               onClick={() => {
                 const name = window.prompt('Name this view')
                 if (!name?.trim()) return
-                setSavedViews(
-                  saveSavedView(orgId, 'files', name, {
-                    projectId: projectFilter,
-                    type: typeFilter,
-                    search,
-                  }),
-                )
-                toast.success('View saved')
+                void savedViewApi
+                  .create({
+                    scope: 'files',
+                    name,
+                    filters: {
+                      projectId: projectFilter,
+                      type: typeFilter,
+                      search,
+                    },
+                  })
+                  .then(async () => {
+                    toast.success('View saved')
+                    await queryClient.invalidateQueries({ queryKey: ['saved-views', orgId, 'files'] })
+                  })
+                  .catch((error) => toast.error(getErrorMessage(error)))
               }}
             >
               <Bookmark className="h-3.5 w-3.5" />
@@ -611,7 +598,14 @@ export function FilesPage() {
                 onContextMenu={(e) => {
                   e.preventDefault()
                   if (!window.confirm(`Delete saved view “${saved.name}”?`)) return
-                  setSavedViews(deleteSavedView(orgId, 'files', saved.id))
+                  void savedViewApi
+                    .remove(saved.id)
+                    .then(async () => {
+                      await queryClient.invalidateQueries({
+                        queryKey: ['saved-views', orgId, 'files'],
+                      })
+                    })
+                    .catch((error) => toast.error(getErrorMessage(error)))
                 }}
               >
                 {saved.name}
@@ -769,40 +763,92 @@ export function FilesPage() {
           {versionFile ? (
             <>
               <SheetHeader>
-                <SheetTitle className="flex items-center gap-2">
-                  Version history
-                  <Badge variant="secondary">Preview</Badge>
-                </SheetTitle>
+                <SheetTitle>Version history</SheetTitle>
                 <SheetDescription className="truncate">
-                  {fileDisplayName(versionFile.fileName)} — demo versions until server-side history ships.
+                  {fileDisplayName(versionFile.fileName)}
                 </SheetDescription>
               </SheetHeader>
-              <ul className="space-y-2 p-5">
-                {fakeFileVersions(versionFile).map((version, i) => (
-                  <li
-                    key={version.id}
-                    className={cn(
-                      'rounded-md border border-border px-3 py-2.5 text-sm',
-                      i === 0 && 'border-primary/30 bg-primary/5',
-                    )}
+              <div className="flex items-center gap-2 px-5 pb-2">
+                <input
+                  ref={versionInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const next = e.target.files?.[0]
+                    e.target.value = ''
+                    if (!next || !versionFile) return
+                    uploadVersionMutation.mutate({ fileId: versionFile.id, file: next })
+                  }}
+                />
+                {can('files:upload') ? (
+                  <Button
+                    size="sm"
+                    disabled={uploadVersionMutation.isPending}
+                    onClick={() => versionInputRef.current?.click()}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">{version.label}</span>
-                      {i === 0 ? (
-                        <Badge variant="secondary" className="text-[10px]">
-                          Current
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatDateTime(version.createdAt)} · {version.sizeLabel}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-              <p className="px-5 pb-5 text-[11px] text-muted-foreground">
-                Version history is stored locally for preview. Full versioning coming soon.
-              </p>
+                    <Upload className="h-3.5 w-3.5" />
+                    {uploadVersionMutation.isPending ? 'Uploading…' : 'Upload new version'}
+                  </Button>
+                ) : null}
+              </div>
+              {versionsQuery.isLoading ? (
+                <div className="px-5 py-8">
+                  <LoadingState />
+                </div>
+              ) : versionsQuery.isError ? (
+                <div className="px-5 py-4">
+                  <ErrorState onRetry={() => void versionsQuery.refetch()} />
+                </div>
+              ) : (
+                <ul className="space-y-2 p-5">
+                  {(versionsQuery.data?.versions ?? []).map((version) => (
+                    <li
+                      key={version.id}
+                      className={cn(
+                        'rounded-md border border-border px-3 py-2.5 text-sm',
+                        version.isCurrent && 'border-primary/30 bg-primary/5',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">v{version.version}</span>
+                        <div className="flex items-center gap-1">
+                          {version.isCurrent ? (
+                            <Badge variant="secondary" className="text-[10px]">
+                              Current
+                            </Badge>
+                          ) : can('files:upload') ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              disabled={restoreVersionMutation.isPending}
+                              onClick={() =>
+                                restoreVersionMutation.mutate({
+                                  fileId: versionFile.id,
+                                  versionId: version.id,
+                                })
+                              }
+                            >
+                              Restore
+                            </Button>
+                          ) : null}
+                          <Button size="sm" variant="ghost" className="h-7 text-xs" asChild>
+                            <a href={version.secureUrl || version.url} target="_blank" rel="noreferrer">
+                              Open
+                            </a>
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {fileDisplayName(version.fileName)} · {formatBytes(version.bytes)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {formatDateTime(version.createdAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </>
           ) : null}
         </SheetContent>

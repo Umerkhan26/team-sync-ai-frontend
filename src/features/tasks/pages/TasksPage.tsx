@@ -51,21 +51,17 @@ import { getAssigneeLanes, taskInAssigneeLane } from '@/features/tasks/utils/ass
 import { averageCycleTimeMs, formatCycleTime } from '@/features/tasks/utils/cycleTime'
 import {
   isOverWipLimit,
-  loadWipLimits,
-  saveWipLimits,
+  mergeWipLimits,
   type WipLimits,
 } from '@/features/tasks/utils/wipLimits'
 import { useAppDispatch, useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
+import { setActiveOrganization } from '@/store/orgSlice'
 import { setActiveTaskId } from '@/store/uiSlice'
 import { KANBAN_COLUMNS, type Membership, type Task, type TaskCustomField, type TaskPriority, type TaskStatus, type User } from '@/types'
 import { cn, getErrorMessage, getInitials, getRelativeDueLabel, isOverdue } from '@/utils/cn'
-import {
-  deleteSavedView,
-  listSavedViews,
-  saveSavedView,
-  type SavedView,
-} from '@/utils/savedViews'
+import type { SavedView } from '@/utils/savedViews'
+import { savedViewApi } from '@/services/savedViewApi'
 
 const schema = z.object({
   title: z.string().min(1).max(300),
@@ -135,6 +131,8 @@ export function TasksPage() {
   const [bulkAssignee, setBulkAssignee] = useState<string>('')
   const [wipLimits, setWipLimits] = useState<WipLimits>({})
   const orgId = useAppSelector((s) => s.org.activeOrganization?.id)
+  const activeOrg = useAppSelector((s) => s.org.activeOrganization)
+  const membership = useAppSelector((s) => s.org.activeMembership)
   const currentUserId = useAppSelector((s) => s.auth.user?.id)
   const queryClient = useQueryClient()
   const dispatch = useAppDispatch()
@@ -142,9 +140,18 @@ export function TasksPage() {
 
   useEffect(() => {
     if (!orgId) return
-    setSavedViews(listSavedViews(orgId, 'tasks'))
-    setWipLimits(loadWipLimits(orgId))
-  }, [orgId])
+    setWipLimits(mergeWipLimits(activeOrg?.settings?.wipLimits))
+  }, [orgId, activeOrg?.settings?.wipLimits])
+
+  const savedViewsQuery = useQuery({
+    queryKey: ['saved-views', orgId, 'tasks'],
+    queryFn: () => savedViewApi.list('tasks'),
+    enabled: Boolean(orgId),
+  })
+
+  useEffect(() => {
+    setSavedViews(savedViewsQuery.data ?? [])
+  }, [savedViewsQuery.data])
 
   useEffect(() => {
     setSelectedTaskIds([])
@@ -457,7 +464,18 @@ export function TasksPage() {
       next[columnId] = n
     }
     setWipLimits(next)
-    saveWipLimits(orgId, next)
+    void orgApi
+      .updateWipLimits(orgId, next as Record<string, number>)
+      .then((organization) => {
+        if (membership) {
+          dispatch(setActiveOrganization({ organization, membership }))
+        }
+        toast.success('WIP limits saved')
+      })
+      .catch((error) => {
+        setWipLimits(mergeWipLimits(activeOrg?.settings?.wipLimits))
+        toast.error(getErrorMessage(error))
+      })
   }
 
   const dueLabelBadge = (task: Task) => {
@@ -710,14 +728,22 @@ export function TasksPage() {
               onClick={() => {
                 const name = window.prompt('Name this view')
                 if (!name?.trim()) return
-                const next = saveSavedView(orgId, 'tasks', name, {
-                  projectId: projectFilter || 'all',
-                  status: statusFilter,
-                  priority: priorityFilter,
-                  view,
-                })
-                setSavedViews(next)
-                toast.success('View saved')
+                void savedViewApi
+                  .create({
+                    scope: 'tasks',
+                    name,
+                    filters: {
+                      projectId: projectFilter || 'all',
+                      status: statusFilter,
+                      priority: priorityFilter,
+                      view,
+                    },
+                  })
+                  .then(async () => {
+                    toast.success('View saved')
+                    await queryClient.invalidateQueries({ queryKey: ['saved-views', orgId, 'tasks'] })
+                  })
+                  .catch((error) => toast.error(getErrorMessage(error)))
               }}
             >
               <Bookmark className="h-3.5 w-3.5" />
@@ -742,7 +768,14 @@ export function TasksPage() {
                 onContextMenu={(e) => {
                   e.preventDefault()
                   if (!window.confirm(`Delete saved view “${saved.name}”?`)) return
-                  setSavedViews(deleteSavedView(orgId, 'tasks', saved.id))
+                  void savedViewApi
+                    .remove(saved.id)
+                    .then(async () => {
+                      await queryClient.invalidateQueries({
+                        queryKey: ['saved-views', orgId, 'tasks'],
+                      })
+                    })
+                    .catch((error) => toast.error(getErrorMessage(error)))
                 }}
                 title="Right-click to delete"
               >

@@ -277,6 +277,34 @@ export function CommandPalette() {
                   </Command.Group>
                 ) : null}
 
+                {searchResults.messages?.length && can('channels:read') ? (
+                  <Command.Group heading="Messages" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
+                    {searchResults.messages.map((message) => (
+                      <Command.Item
+                        key={message.id}
+                        value={`search message ${message.body} ${message.channelName} ${message.authorName}`}
+                        onSelect={() =>
+                          run(() =>
+                            navigate(
+                              `/app/chat?channelId=${message.channelId}&messageId=${message.id}`,
+                            ),
+                          )
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent"
+                      >
+                        <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm">{message.body}</p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            #{message.channelName}
+                            {message.authorName ? ` · ${message.authorName}` : ''}
+                          </p>
+                        </div>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                ) : null}
+
                 {searchResults.meetings.length && can('meetings:read') ? (
                   <Command.Group heading="Meetings" className="mt-2 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1">
                     {searchResults.meetings.map((meeting) => (

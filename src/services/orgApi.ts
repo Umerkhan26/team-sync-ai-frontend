@@ -64,7 +64,11 @@ export const orgApi = {
       timezone: string
       locale: string
       accentColor: string | null
-      settings: { allowGuestInvites: boolean; defaultRoleSlug: string }
+      settings: {
+        allowGuestInvites: boolean
+        defaultRoleSlug: string
+        wipLimits?: Record<string, number>
+      }
       onboarding: Partial<{
         profileCompleted: boolean
         invitedMembers: boolean
@@ -77,6 +81,12 @@ export const orgApi = {
       `/organizations/${organizationId}`,
       input,
     )
+  },
+  updateWipLimits(organizationId: string, wipLimits: Record<string, number>) {
+    return apiPatch<{ organization: Organization }>(
+      `/organizations/${organizationId}/wip-limits`,
+      { wipLimits },
+    ).then((r) => r.organization)
   },
   invite(
     organizationId: string,

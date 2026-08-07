@@ -67,6 +67,7 @@ export interface AuthTokens {
 export interface OrganizationSettings {
   allowGuestInvites: boolean
   defaultRoleSlug: string
+  wipLimits?: Record<string, number>
 }
 
 export interface OrganizationOnboarding {
@@ -162,6 +163,12 @@ export interface Team {
   updatedAt?: string
 }
 
+export interface MeetingRsvp {
+  userId: string
+  status: 'going' | 'maybe' | 'declined'
+  respondedAt?: string
+}
+
 export interface Meeting {
   id: string
   organizationId: string
@@ -169,6 +176,7 @@ export interface Meeting {
   startsAt: string
   endsAt: string
   participantIds: string[]
+  rsvps?: MeetingRsvp[]
   agenda?: string
   notes?: string
   projectId?: string | null
@@ -278,6 +286,14 @@ export interface SearchResults {
   meetings: Array<{ id: string; title: string; startsAt?: string; endsAt?: string }>
   files: Array<{ id: string; fileName: string; mimeType?: string; secureUrl?: string; url?: string }>
   people: Array<{ id: string; name?: string; email?: string; avatarUrl?: string; membershipId?: string }>
+  messages: Array<{
+    id: string
+    body: string
+    channelId: string
+    channelName?: string
+    authorName?: string
+    createdAt?: string
+  }>
 }
 
 export interface AuditLog {
@@ -422,6 +438,22 @@ export interface FileAsset {
   uploadedBy?: string | User
   projectId?: string | null
   taskId?: string | null
+  url: string
+  secureUrl: string
+  fileName: string
+  mimeType: string
+  bytes: number
+  version?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface FileVersionEntry {
+  id: string
+  fileId: string
+  version: number
+  isCurrent: boolean
+  uploadedBy?: string | User
   url: string
   secureUrl: string
   fileName: string

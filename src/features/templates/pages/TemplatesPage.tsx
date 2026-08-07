@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/select'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
+import { projectApi } from '@/services/projectApi'
 import { templateApi } from '@/services/templateApi'
 import { getErrorMessage } from '@/utils/cn'
 import type { WorkspaceTemplate } from '@/types'
@@ -187,11 +188,19 @@ export function TemplatesPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<WorkspaceTemplate | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [pendingTaskApply, setPendingTaskApply] = useState<TemplateEntry | null>(null)
+  const [applyProjectId, setApplyProjectId] = useState('')
 
   const customTemplatesQuery = useQuery({
     queryKey: ['templates', orgId],
     queryFn: () => templateApi.list(),
     enabled: Boolean(orgId),
+  })
+
+  const projectsQuery = useQuery({
+    queryKey: ['projects', orgId, 'template-apply'],
+    queryFn: () => projectApi.list({ limit: 100 }),
+    enabled: Boolean(orgId && pendingTaskApply),
   })
 
   const customTemplates = useMemo(
@@ -255,10 +264,87 @@ export function TemplatesPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
+  const applyMutation = useMutation({
+    mutationFn: async (input: { template: TemplateEntry; projectId?: string }) => {
+      const { template, projectId } = input
+      const overrides =
+        template.kind === 'project'
+          ? {
+              name: template.params.name || template.title,
+              description: template.params.description || template.description,
+            }
+          : template.kind === 'task'
+            ? {
+                title: template.params.title || template.title,
+                description: template.params.description || template.description,
+                priority: template.params.priority || 'medium',
+              }
+            : {
+                title: template.params.title || template.title,
+                content:
+                  template.params.content ||
+                  (template.id === 'doc-meeting-notes'
+                    ? '## Agenda\n\n## Discussion\n\n## Action items\n- '
+                    : template.id === 'doc-prd'
+                      ? '## Problem\n\n## Goals\n\n## Non-goals\n\n## Scope\n\n## Success metrics\n'
+                      : template.id === 'doc-runbook'
+                        ? '## Purpose\n\n## Steps\n1. \n2. \n\n## Rollback\n\n## Contacts\n'
+                        : ''),
+              }
+
+      return templateApi.apply({
+        ...(template.custom ? { templateId: template.id } : { builtinId: template.id }),
+        projectId,
+        overrides,
+      })
+    },
+    onSuccess: async (result) => {
+      setPendingTaskApply(null)
+      setApplyProjectId('')
+      setPreview(null)
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['projects', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['documents', orgId] }),
+      ])
+
+      if (result.kind === 'project' && result.project?.id) {
+        const taskCount = result.tasks?.length ?? 0
+        toast.success(
+          taskCount
+            ? `Project created with ${taskCount} task${taskCount === 1 ? '' : 's'}`
+            : 'Project created from template',
+        )
+        navigate(`/app/projects/${result.project.id}`)
+        return
+      }
+      if (result.kind === 'task' && result.task?.id) {
+        toast.success('Task created from template')
+        navigate(`/app/tasks?taskId=${result.task.id}`)
+        return
+      }
+      if (result.document?.id) {
+        toast.success('Document created from template')
+        navigate(`/app/documents/${result.document.id}`)
+        return
+      }
+      toast.success('Template applied')
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
   const applyTemplate = (template: TemplateEntry) => {
-    const meta = KIND_META[template.kind]
-    const query = new URLSearchParams({ open: '1', template: template.id, ...template.params })
-    navigate(`${meta.route}?${query.toString()}`)
+    if (!canUse[template.kind]) {
+      toast.error('You do not have permission to use this template')
+      return
+    }
+    if (template.kind === 'task') {
+      setPendingTaskApply(template)
+      setApplyProjectId('')
+      return
+    }
+    applyMutation.mutate({ template })
   }
 
   const openCreate = () => {
@@ -336,7 +422,7 @@ export function TemplatesPage() {
           </Button>
           <Button
             size="sm"
-            disabled={!canUse[template.kind]}
+            disabled={!canUse[template.kind] || applyMutation.isPending}
             onClick={() => applyTemplate(template)}
           >
             Use template
@@ -453,17 +539,68 @@ export function TemplatesPage() {
                   Close
                 </Button>
                 <Button
-                  disabled={!canUse[preview.kind]}
-                  onClick={() => {
-                    applyTemplate(preview)
-                    setPreview(null)
-                  }}
+                  disabled={!canUse[preview.kind] || applyMutation.isPending}
+                  onClick={() => applyTemplate(preview)}
                 >
-                  Use template
+                  {applyMutation.isPending ? 'Applying…' : 'Use template'}
                 </Button>
               </DialogFooter>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pendingTaskApply)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingTaskApply(null)
+            setApplyProjectId('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Choose a project</DialogTitle>
+            <DialogDescription>
+              Task templates need a project. “{pendingTaskApply?.title}” will be created there.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Project</Label>
+            <Select value={applyProjectId} onValueChange={setApplyProjectId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                {(projectsQuery.data?.data.items ?? []).map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPendingTaskApply(null)
+                setApplyProjectId('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!applyProjectId || applyMutation.isPending}
+              onClick={() => {
+                if (!pendingTaskApply || !applyProjectId) return
+                applyMutation.mutate({ template: pendingTaskApply, projectId: applyProjectId })
+              }}
+            >
+              {applyMutation.isPending ? 'Creating…' : 'Create task'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

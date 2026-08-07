@@ -1,5 +1,5 @@
 import { api, apiDelete, apiGet, apiPost } from './api'
-import type { AiGenerateResult, AnalyticsOverview, FileAsset } from '@/types'
+import type { AiGenerateResult, AnalyticsOverview, FileAsset, FileVersionEntry } from '@/types'
 
 export const aiApi = {
   generate(input: {
@@ -51,6 +51,38 @@ export const fileApi = {
   },
   get(fileId: string) {
     return apiGet<{ file: FileAsset }>(`/files/${fileId}`).then((r) => r.data.file)
+  },
+  listVersions(fileId: string) {
+    return apiGet<{ file: FileAsset; versions: FileVersionEntry[] }>(
+      `/files/${fileId}/versions`,
+    ).then((r) => r.data)
+  },
+  async uploadVersion(
+    fileId: string,
+    file: File,
+    meta?: { onProgress?: (percent: number) => void },
+  ) {
+    const form = new FormData()
+    form.append('file', file)
+    const { data } = await api.post<{ success: true; data: { file: FileAsset } }>(
+      `/files/${fileId}/versions`,
+      form,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: meta?.onProgress
+          ? (event) => {
+              const percent = event.total ? Math.round((event.loaded / event.total) * 100) : 0
+              meta.onProgress?.(percent)
+            }
+          : undefined,
+      },
+    )
+    return data.data.file
+  },
+  restoreVersion(fileId: string, versionId: string) {
+    return apiPost<{ file: FileAsset }>(`/files/${fileId}/versions/${versionId}/restore`).then(
+      (r) => r.file,
+    )
   },
   remove(fileId: string) {
     return apiDelete<{ deleted: boolean }>(`/files/${fileId}`)
