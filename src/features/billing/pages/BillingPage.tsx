@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Check, CreditCard, Minus, Plus, Sparkles, Zap } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Check, CreditCard, ExternalLink, Minus, Plus, Sparkles, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useAppSelector } from '@/store'
+import { billingApi } from '@/services/billingApi'
+import { orgApi } from '@/services/orgApi'
+import { useAppDispatch, useAppSelector } from '@/store'
+import { setActiveOrganization } from '@/store/orgSlice'
 import { usePermissions } from '@/hooks/usePermissions'
-import { cn } from '@/utils/cn'
+import { cn, getErrorMessage } from '@/utils/cn'
 
 const PLANS = [
   {
@@ -45,50 +49,89 @@ const PLANS = [
   },
 ] as const
 
-const STUB_INVOICES = [
-  { id: 'inv_001', date: '2026-07-01', amount: '$144.00', status: 'Paid' as const },
-  { id: 'inv_002', date: '2026-06-01', amount: '$132.00', status: 'Paid' as const },
-  { id: 'inv_003', date: '2026-05-01', amount: '$120.00', status: 'Paid' as const },
-]
-
-function seatsKey(orgId: string) {
-  return `teamsync_billing_seats_${orgId}`
-}
-
-function loadSeats(orgId: string): number {
-  try {
-    const raw = localStorage.getItem(seatsKey(orgId))
-    if (raw === null) return 3
-    const n = Number(raw)
-    return Number.isFinite(n) && n >= 1 ? n : 3
-  } catch {
-    return 3
-  }
-}
-
-const SEAT_CAP = 10
+const SEAT_CAP = 100
 
 export function BillingPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const org = useAppSelector((s) => s.org.activeOrganization)
+  const membership = useAppSelector((s) => s.org.activeMembership)
+  const dispatch = useAppDispatch()
+  const queryClient = useQueryClient()
   const { can, isOwner } = usePermissions()
-  const currentPlan = (org?.plan || 'free').toLowerCase()
-  const [seats, setSeats] = useState(() => (org?.id ? loadSeats(org.id) : 3))
+  const [seats, setSeats] = useState(3)
+
+  const billingQuery = useQuery({
+    queryKey: ['billing', org?.id],
+    queryFn: () => billingApi.status(),
+    enabled: Boolean(org?.id) && (can('org:billing') || isOwner),
+  })
+
+  const invoicesQuery = useQuery({
+    queryKey: ['billing-invoices', org?.id],
+    queryFn: () => billingApi.invoices(),
+    enabled: Boolean(org?.id) && (can('org:billing') || isOwner),
+  })
+
+  const billing = billingQuery.data
+  const currentPlan = (billing?.plan || org?.plan || 'free').toLowerCase()
+  const configured = billing?.configured ?? false
 
   useEffect(() => {
-    if (org?.id) setSeats(loadSeats(org.id))
+    if (billing?.billingSeats) setSeats(billing.billingSeats)
+    else if (org?.billingSeats) setSeats(org.billingSeats)
+  }, [billing?.billingSeats, org?.billingSeats])
+
+  useEffect(() => {
+    const checkout = searchParams.get('checkout')
+    if (!checkout || !org?.id) return
+    if (checkout === 'success') {
+      toast.success('Payment received — refreshing plan…')
+      void (async () => {
+        await queryClient.invalidateQueries({ queryKey: ['billing', org.id] })
+        await queryClient.invalidateQueries({ queryKey: ['billing-invoices', org.id] })
+        try {
+          const data = await orgApi.get(org.id)
+          dispatch(
+            setActiveOrganization({
+              organization: data.organization,
+              membership: membership ?? undefined,
+            }),
+          )
+        } catch {
+          /* ignore */
+        }
+      })()
+    } else if (checkout === 'cancel') {
+      toast.message('Checkout cancelled')
+    }
+    searchParams.delete('checkout')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org?.id])
 
-  const updateSeats = (next: number) => {
-    const clamped = Math.max(1, Math.min(999, next))
-    setSeats(clamped)
-    if (org?.id) localStorage.setItem(seatsKey(org.id), String(clamped))
-  }
+  const checkoutMutation = useMutation({
+    mutationFn: () => billingApi.checkout(seats),
+    onSuccess: (result) => {
+      if (result.url) {
+        window.location.href = result.url
+        return
+      }
+      toast.error('No checkout URL returned')
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
 
-  const checkout = (planName: string) => {
-    toast.info('Stripe checkout is a preview', {
-      description: `${planName} payments are not live yet — no card will be charged.`,
-    })
-  }
+  const portalMutation = useMutation({
+    mutationFn: () => billingApi.portal(),
+    onSuccess: (result) => {
+      if (result.url) {
+        window.location.href = result.url
+        return
+      }
+      toast.error('No portal URL returned')
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
 
   if (!can('org:billing') && !isOwner) {
     return (
@@ -104,21 +147,50 @@ export function BillingPage() {
     )
   }
 
-  const monthlyTotal = currentPlan === 'pro' ? seats * 12 : 0
+  const monthlyTotal = currentPlan === 'pro' ? seats * 12 : seats * 12
+  const invoices = invoicesQuery.data ?? []
+
+  const startCheckout = () => {
+    if (!configured) {
+      toast.error('Stripe is not configured on the server')
+      return
+    }
+    checkoutMutation.mutate()
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Plan & seats"
         title="Billing"
-        description={`${org?.name || 'Workspace'} · current plan: ${currentPlan}. Stripe checkout is a preview — payments are not charged yet.`}
+        description={
+          configured
+            ? `${org?.name || 'Workspace'} · current plan: ${currentPlan}. Payments run through Stripe Checkout (test mode OK).`
+            : `${org?.name || 'Workspace'} · Stripe keys missing on the server.`
+        }
         actions={
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">Preview</Badge>
-            <Button size="sm" onClick={() => checkout('Pro')}>
-              <CreditCard className="h-3.5 w-3.5" />
-              Stripe checkout (preview)
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {configured ? (
+              <Badge variant="secondary">Stripe connected</Badge>
+            ) : (
+              <Badge variant="outline">Stripe offline</Badge>
+            )}
+            {billing?.hasSubscription ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={portalMutation.isPending}
+                onClick={() => portalMutation.mutate()}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Manage subscription
+              </Button>
+            ) : (
+              <Button size="sm" disabled={checkoutMutation.isPending || !configured} onClick={startCheckout}>
+                <CreditCard className="h-3.5 w-3.5" />
+                {checkoutMutation.isPending ? 'Redirecting…' : 'Upgrade to Pro'}
+              </Button>
+            )}
           </div>
         }
       />
@@ -129,8 +201,8 @@ export function BillingPage() {
             <p className="text-sm font-medium">Current plan</p>
             <p className="text-xs text-muted-foreground">
               {currentPlan === 'pro'
-                ? `$12 × ${seats} seats = $${monthlyTotal}/mo`
-                : 'Upgrade to Pro for per-seat billing.'}
+                ? `$12 × ${seats} seats = $${seats * 12}/mo`
+                : `Select seats below, then upgrade (≈ $${monthlyTotal}/mo).`}
             </p>
           </div>
           <Badge variant="secondary" className="capitalize">
@@ -139,67 +211,72 @@ export function BillingPage() {
         </div>
 
         <div className="surface-panel p-4">
-          <p className="text-sm font-medium">Seats used</p>
+          <p className="text-sm font-medium">Seats</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Licensed seats for this workspace (stub).
+            {currentPlan === 'pro'
+              ? 'Change seats in Stripe Customer Portal.'
+              : 'Quantity charged at checkout ($12 / seat / month).'}
           </p>
           <div className="mt-3 flex items-center gap-3">
             <Button
               variant="outline"
               size="icon-sm"
-              disabled={seats <= 1}
-              onClick={() => updateSeats(seats - 1)}
+              disabled={currentPlan === 'pro' || seats <= 1}
+              onClick={() => setSeats((s) => Math.max(1, s - 1))}
             >
               <Minus className="h-3.5 w-3.5" />
             </Button>
             <span className="min-w-[4.5rem] text-center text-lg font-semibold tabular-nums">
-              {seats} / {SEAT_CAP}
+              {seats}
             </span>
             <Button
               variant="outline"
               size="icon-sm"
-              disabled={seats >= SEAT_CAP}
-              onClick={() => updateSeats(seats + 1)}
+              disabled={currentPlan === 'pro' || seats >= SEAT_CAP}
+              onClick={() => setSeats((s) => Math.min(SEAT_CAP, s + 1))}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
-          </div>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${Math.min(100, (seats / SEAT_CAP) * 100)}%` }}
-            />
           </div>
         </div>
       </div>
 
       <div className="space-y-3">
         <h2 className="app-title text-sm">Invoices</h2>
-        <ul className="surface-panel divide-y divide-border overflow-hidden">
-          {STUB_INVOICES.map((inv) => (
-            <li
-              key={inv.id}
-              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
-            >
-              <div>
-                <p className="font-medium">{inv.id}</p>
-                <p className="text-xs text-muted-foreground">{inv.date}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-medium tabular-nums">{inv.amount}</span>
-                <Badge variant="success">{inv.status}</Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => toast.info('Invoice PDF download (stub)')}
-                >
-                  PDF
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {invoicesQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading invoices…</p>
+        ) : invoices.length === 0 ? (
+          <p className="surface-panel p-4 text-sm text-muted-foreground">
+            No Stripe invoices yet. After a successful test checkout they appear here.
+          </p>
+        ) : (
+          <ul className="surface-panel divide-y divide-border overflow-hidden">
+            {invoices.map((inv) => (
+              <li
+                key={inv.id}
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+              >
+                <div>
+                  <p className="font-medium">{inv.id}</p>
+                  <p className="text-xs text-muted-foreground">{inv.date}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-medium tabular-nums">{inv.amount}</span>
+                  <Badge variant={inv.status === 'paid' ? 'success' : 'secondary'} className="capitalize">
+                    {inv.status}
+                  </Badge>
+                  {inv.pdfUrl || inv.hostedUrl ? (
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
+                      <a href={inv.pdfUrl || inv.hostedUrl || '#'} target="_blank" rel="noreferrer">
+                        PDF
+                      </a>
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -240,10 +317,29 @@ export function BillingPage() {
             <Button
               className="mt-5"
               variant={currentPlan === plan.id ? 'secondary' : 'default'}
-              disabled={currentPlan === plan.id}
-              onClick={() => checkout(plan.name)}
+              disabled={
+                currentPlan === plan.id ||
+                plan.id === 'free' ||
+                plan.id === 'enterprise' ||
+                checkoutMutation.isPending ||
+                !configured
+              }
+              onClick={() => {
+                if (plan.id === 'pro') startCheckout()
+                else if (plan.id === 'enterprise') {
+                  toast.message('Enterprise is sales-led — contact support for a custom quote.')
+                }
+              }}
             >
-              {currentPlan === plan.id ? 'Current plan' : `Upgrade to ${plan.name}`}
+              {currentPlan === plan.id
+                ? 'Current plan'
+                : plan.id === 'enterprise'
+                  ? 'Contact sales'
+                  : plan.id === 'free'
+                    ? 'Included'
+                    : checkoutMutation.isPending
+                      ? 'Redirecting…'
+                      : `Upgrade to ${plan.name}`}
             </Button>
           </div>
         ))}

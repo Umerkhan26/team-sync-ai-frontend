@@ -87,6 +87,9 @@ export interface Organization {
   logoUrl?: string | null
   plan: string
   ownerId: string
+  stripeCustomerId?: string | null
+  stripeSubscriptionId?: string | null
+  billingSeats?: number
   companySize?: CompanySize | null
   industry?: string | null
   country?: string | null
