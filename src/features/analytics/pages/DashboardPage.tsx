@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
   CalendarClock,
+  Download,
   FileText,
   FolderKanban,
   ListTodo,
@@ -13,6 +14,7 @@ import {
   Users,
   UsersRound,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { ErrorState } from '@/components/shared/ErrorState'
@@ -31,7 +33,7 @@ import { documentApi } from '@/services/documentApi'
 import { teamApi } from '@/services/teamApi'
 import { useAppSelector } from '@/store'
 import { usePermissions } from '@/hooks/usePermissions'
-import { cn, formatDate, formatDateTime, getInitials } from '@/utils/cn'
+import { cn, formatDate, formatDateTime, getErrorMessage, getInitials } from '@/utils/cn'
 import type { Task, User } from '@/types'
 
 function isOverdue(task: Task) {
@@ -378,21 +380,39 @@ export function DashboardPage() {
             : `${org?.name} · ${title} as ${roleName}.`
         }
         actions={
-          can('projects:create') ? (
-            <Button asChild size="sm">
-              <Link to="/app/projects">
-                <Plus className="h-3.5 w-3.5" />
-                New project
-              </Link>
-            </Button>
-          ) : can('tasks:create') ? (
-            <Button asChild size="sm">
-              <Link to="/app/tasks">
-                <Plus className="h-3.5 w-3.5" />
-                New task
-              </Link>
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            {can('analytics:read') ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void analyticsApi
+                    .exportOverview('csv')
+                    .then(() => toast.success('Analytics CSV downloaded'))
+                    .catch((error) => toast.error(getErrorMessage(error)))
+                }}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+            ) : null}
+            {can('projects:create') ? (
+              <Button asChild size="sm">
+                <Link to="/app/projects">
+                  <Plus className="h-3.5 w-3.5" />
+                  New project
+                </Link>
+              </Button>
+            ) : can('tasks:create') ? (
+              <Button asChild size="sm">
+                <Link to="/app/tasks">
+                  <Plus className="h-3.5 w-3.5" />
+                  New task
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         }
       />
 

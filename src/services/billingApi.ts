@@ -8,6 +8,12 @@ export type BillingStatus = {
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   hasSubscription: boolean
+  storage?: {
+    plan: string
+    usedBytes: number
+    limitBytes: number | null
+    remainingBytes: number | null
+  }
 }
 
 export type BillingInvoice = {

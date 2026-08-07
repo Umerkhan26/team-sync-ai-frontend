@@ -145,12 +145,19 @@ export function FilesPage() {
     enabled: Boolean(orgId) && can('files:read'),
   })
 
+  const usageQuery = useQuery({
+    queryKey: ['files-usage', orgId],
+    queryFn: () => fileApi.usage(),
+    enabled: Boolean(orgId) && can('files:read'),
+  })
+
   const uploadMutation = useMutation({
     mutationFn: (file: File) =>
       fileApi.upload(file, { onProgress: (percent) => setUploadProgress(percent) }),
     onSuccess: () => {
       toast.success('File uploaded')
       void queryClient.invalidateQueries({ queryKey: ['files', orgId] })
+      void queryClient.invalidateQueries({ queryKey: ['files-usage', orgId] })
     },
     onError: (error) => toast.error(getErrorMessage(error, 'Upload failed')),
     onSettled: () => setUploadProgress(null),
@@ -162,6 +169,7 @@ export function FilesPage() {
       toast.success('File deleted')
       setRemoveId(null)
       void queryClient.invalidateQueries({ queryKey: ['files', orgId] })
+      void queryClient.invalidateQueries({ queryKey: ['files-usage', orgId] })
     },
     onError: (error) => toast.error(getErrorMessage(error, 'Delete failed')),
   })
@@ -422,7 +430,13 @@ export function FilesPage() {
       <PageHeader
         eyebrow="Assets"
         title="Files"
-        description="Upload assets to Cloudinary and keep them linked to this workspace."
+        description={
+          usageQuery.data
+            ? usageQuery.data.limitBytes == null
+              ? `Upload assets · ${formatBytes(usageQuery.data.usedBytes)} used (unlimited on ${usageQuery.data.plan})`
+              : `Upload assets · ${formatBytes(usageQuery.data.usedBytes)} / ${formatBytes(usageQuery.data.limitBytes)} (${usageQuery.data.plan} plan)`
+            : 'Upload assets to Cloudinary and keep them linked to this workspace.'
+        }
         actions={
           <div className="flex items-center gap-2">
             <Button

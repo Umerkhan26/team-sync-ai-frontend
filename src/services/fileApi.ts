@@ -20,6 +20,22 @@ export const analyticsApi = {
       (r) => r.data.overview,
     )
   },
+  async exportOverview(format: 'csv' | 'json' = 'csv') {
+    const { data, headers } = await api.get<Blob>('/analytics/overview/export', {
+      params: { format },
+      responseType: 'blob',
+    })
+    const disposition = String(headers['content-disposition'] || '')
+    const match = /filename="?([^"]+)"?/i.exec(disposition)
+    const filename =
+      match?.[1] || `teamsync-analytics.${format === 'json' ? 'json' : 'csv'}`
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  },
 }
 
 export const fileApi = {
@@ -48,6 +64,16 @@ export const fileApi = {
   },
   list(params?: { page?: number; limit?: number; projectId?: string }) {
     return apiGet<{ items: FileAsset[] }>('/files', params)
+  },
+  usage() {
+    return apiGet<{
+      usage: {
+        plan: string
+        usedBytes: number
+        limitBytes: number | null
+        remainingBytes: number | null
+      }
+    }>('/files/usage').then((r) => r.data.usage)
   },
   get(fileId: string) {
     return apiGet<{ file: FileAsset }>(`/files/${fileId}`).then((r) => r.data.file)

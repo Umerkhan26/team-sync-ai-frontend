@@ -51,6 +51,13 @@ const PLANS = [
 
 const SEAT_CAP = 100
 
+function formatStorage(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
 export function BillingPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const org = useAppSelector((s) => s.org.activeOrganization)
@@ -211,6 +218,30 @@ export function BillingPage() {
         </div>
 
         <div className="surface-panel p-4">
+          <p className="text-sm font-medium">Storage</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {billing?.storage
+              ? billing.storage.limitBytes == null
+                ? `${formatStorage(billing.storage.usedBytes)} used · unlimited`
+                : `${formatStorage(billing.storage.usedBytes)} / ${formatStorage(billing.storage.limitBytes)}`
+              : 'Loading…'}
+          </p>
+          {billing?.storage?.limitBytes != null ? (
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    (billing.storage.usedBytes / billing.storage.limitBytes) * 100,
+                  )}%`,
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="surface-panel p-4 lg:col-span-2">
           <p className="text-sm font-medium">Seats</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {currentPlan === 'pro'
